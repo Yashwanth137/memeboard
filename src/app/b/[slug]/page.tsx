@@ -94,22 +94,48 @@ export default function BoardPage() {
         setIsMember(!!membership);
       }
 
-      // 4. Fetch Links with Submitter Profile
-      const { data: linksData } = await supabase
+      // 4. Fetch Links directly
+      const { data: linksData, error: linksError } = await supabase
         .from('links')
-        .select(`
-          id,
-          board_id,
-          submitted_by,
-          url,
-          created_at,
-          profile:profiles ( username, email )
-        `)
+        .select('id, board_id, submitted_by, url, created_at')
         .eq('board_id', bData.id)
         .order('created_at', { ascending: false });
 
-      if (linksData) {
-        setLinks(linksData as any);
+      if (linksError) {
+        console.error('Error fetching links:', linksError);
+        setLinks([]);
+      } else if (linksData && linksData.length > 0) {
+        // Collect unique submitter IDs to fetch profile display names
+        const submitterIds = Array.from(
+          new Set(
+            linksData
+              .map((l) => l.submitted_by)
+              .filter((id): id is string => Boolean(id))
+          )
+        );
+
+        let profilesMap = new Map<string, { username: string | null; email: string | null }>();
+        if (submitterIds.length > 0) {
+          const { data: profs } = await supabase
+            .from('profiles')
+            .select('id, username, email')
+            .in('id', submitterIds);
+
+          if (profs) {
+            profs.forEach((p) =>
+              profilesMap.set(p.id, { username: p.username, email: p.email })
+            );
+          }
+        }
+
+        const enrichedLinks: LinkItem[] = linksData.map((l) => ({
+          ...l,
+          profile: l.submitted_by ? profilesMap.get(l.submitted_by) || null : null,
+        }));
+
+        setLinks(enrichedLinks);
+      } else {
+        setLinks([]);
       }
     } catch (err: any) {
       console.error('Error loading board:', err);

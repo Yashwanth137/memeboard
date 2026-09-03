@@ -160,12 +160,15 @@ export default function DashboardPage() {
         throw bError;
       }
 
-      // Add as owner member
-      await supabase.from('board_members').insert({
-        board_id: newBoard.id,
-        user_id: user.id,
-        role: 'owner',
-      });
+      // Add as owner member (upsert with ignoreDuplicates in case trigger already inserted it)
+      await supabase.from('board_members').upsert(
+        {
+          board_id: newBoard.id,
+          user_id: user.id,
+          role: 'owner',
+        },
+        { onConflict: 'board_id,user_id', ignoreDuplicates: true }
+      );
 
       setShowCreateModal(false);
       router.push(`/b/${newBoard.slug}`);

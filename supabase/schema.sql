@@ -35,7 +35,7 @@ create table if not exists public.board_members (
 create table if not exists public.links (
   id uuid default gen_random_uuid() primary key,
   board_id uuid references public.boards(id) on delete cascade not null,
-  submitted_by uuid references auth.users(id) on delete set null,
+  submitted_by uuid references public.profiles(id) on delete set null,
   url text not null,
   created_at timestamptz default now() not null
 );
