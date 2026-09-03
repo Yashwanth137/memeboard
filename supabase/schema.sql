@@ -91,7 +91,8 @@ begin
     coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
     generated_code
   )
-  on conflict (id) do nothing;
+  on conflict (id) do update
+  set email = excluded.email;
   return new;
 end;
 $$ language plpgsql security definer;
@@ -184,9 +185,103 @@ create policy "Allow board members to insert links" on public.links
   );
 
 -- ============================================================
+-- SCHEMA & TABLE GRANTS (Enables anon/authenticated access)
+-- ============================================================
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+grant all on all routines in schema public to anon, authenticated, service_role;
+
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+alter default privileges in schema public grant all on routines to anon, authenticated, service_role;
+
+-- ============================================================
+-- SECURITY DEFINER RPC FUNCTIONS FOR TELEGRAM BOT
+-- ============================================================
+
+-- Function to safely link a Telegram account via connect code
+create or replace function public.link_telegram_account(
+  p_code text,
+  p_telegram_user_id bigint,
+  p_telegram_username text
+)
+returns json as $$
+declare
+  v_profile public.profiles%rowtype;
+  v_board json;
+begin
+  select * into v_profile
+  from public.profiles
+  where telegram_link_code = p_code;
+
+  if not found then
+    return json_build_object('success', false, 'error', 'Invalid or expired connect code');
+  end if;
+
+  update public.profiles
+  set telegram_user_id = p_telegram_user_id,
+      telegram_username = p_telegram_username,
+      telegram_link_code = null
+  where id = v_profile.id;
+
+  select row_to_json(b) into v_board
+  from public.board_members bm
+  join public.boards b on b.id = bm.board_id
+  where bm.user_id = v_profile.id
+  order by bm.joined_at desc
+  limit 1;
+
+  return json_build_object(
+    'success', true,
+    'username', coalesce(v_profile.username, v_profile.email),
+    'board_name', v_board->>'name'
+  );
+end;
+$$ language plpgsql security definer;
+
+-- Function to safely ingest links from Telegram
+create or replace function public.telegram_submit_link(
+  p_telegram_user_id bigint,
+  p_url text
+)
+returns json as $$
+declare
+  v_profile public.profiles%rowtype;
+  v_board public.boards%rowtype;
+begin
+  select * into v_profile
+  from public.profiles
+  where telegram_user_id = p_telegram_user_id;
+
+  if not found then
+    return json_build_object('success', false, 'error', 'Telegram account not linked');
+  end if;
+
+  select b.* into v_board
+  from public.board_members bm
+  join public.boards b on b.id = bm.board_id
+  where bm.user_id = v_profile.id
+  order by bm.joined_at desc
+  limit 1;
+
+  if not found then
+    return json_build_object('success', false, 'error', 'No boards found for user');
+  end if;
+
+  insert into public.links (board_id, submitted_by, url)
+  values (v_board.id, v_profile.id, p_url);
+
+  return json_build_object(
+    'success', true,
+    'board_name', v_board.name
+  );
+end;
+$$ language plpgsql security definer;
+
+-- ============================================================
 -- SUPABASE REALTIME REPLICATION
 -- ============================================================
--- Enable Postgres Changes listening on links (only if not already added)
 do $$
 begin
   if not exists (

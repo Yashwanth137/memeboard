@@ -132,7 +132,7 @@ export default function JoinBoardPage() {
         ) : (
           <div className="flex flex-col gap-3">
             <Link
-              href="/#auth"
+              href={`/login?redirect=/b/${slug}/join`}
               className="btn btn-primary btn-lg"
               style={{ width: '100%' }}
             >

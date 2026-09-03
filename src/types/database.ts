@@ -115,27 +115,80 @@ export interface Database {
           }
         ];
       };
+      categories: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string;
+          board_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          slug: string;
+          board_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          slug?: string;
+          board_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'categories_board_id_fkey';
+            columns: ['board_id'];
+            isOneToOne: false;
+            referencedRelation: 'boards';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
       links: {
         Row: {
           id: string;
           board_id: string;
           submitted_by: string | null;
           url: string;
+          platform: string;
+          content_type: 'image' | 'video' | 'link';
+          title: string | null;
+          description: string | null;
+          thumbnail_url: string | null;
+          category_id: string | null;
           created_at: string;
+          updated_at: string;
         };
         Insert: {
           id?: string;
           board_id: string;
           submitted_by?: string | null;
           url: string;
+          platform?: string;
+          content_type?: 'image' | 'video' | 'link';
+          title?: string | null;
+          description?: string | null;
+          thumbnail_url?: string | null;
+          category_id?: string | null;
           created_at?: string;
+          updated_at?: string;
         };
         Update: {
           id?: string;
           board_id?: string;
           submitted_by?: string | null;
           url?: string;
+          platform?: string;
+          content_type?: 'image' | 'video' | 'link';
+          title?: string | null;
+          description?: string | null;
+          thumbnail_url?: string | null;
+          category_id?: string | null;
           created_at?: string;
+          updated_at?: string;
         };
         Relationships: [
           {
@@ -149,7 +202,14 @@ export interface Database {
             foreignKeyName: 'links_submitted_by_fkey';
             columns: ['submitted_by'];
             isOneToOne: false;
-            referencedRelation: 'users';
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'links_category_id_fkey';
+            columns: ['category_id'];
+            isOneToOne: false;
+            referencedRelation: 'categories';
             referencedColumns: ['id'];
           }
         ];
@@ -159,7 +219,24 @@ export interface Database {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      link_telegram_account: {
+        Args: {
+          p_code: string;
+          p_telegram_user_id: number;
+          p_telegram_username: string;
+        };
+        Returns: Json;
+      };
+      telegram_submit_link: {
+        Args: {
+          p_telegram_user_id: number;
+          p_url: string;
+          p_platform?: string;
+          p_title?: string | null;
+          p_category_id?: string | null;
+        };
+        Returns: Json;
+      };
     };
     Enums: {
       [_ in never]: never;
@@ -168,4 +245,19 @@ export interface Database {
       [_ in never]: never;
     };
   };
+}
+
+export type Category = Database['public']['Tables']['categories']['Row'];
+export type LinkRow = Database['public']['Tables']['links']['Row'];
+
+export interface LinkWithDetails extends LinkRow {
+  embed_type?: string | null;
+  external_id?: string | null;
+  resolved_url?: string | null;
+  profile?: {
+    id?: string;
+    username: string | null;
+    email: string | null;
+  } | null;
+  category?: Category | null;
 }

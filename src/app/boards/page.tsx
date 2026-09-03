@@ -15,12 +15,13 @@ interface Board {
   member_count?: number;
   link_count?: number;
   role?: string;
+  thumbnails?: string[];
+  members?: string[];
 }
 
 interface Profile {
   id: string;
   username: string | null;
-  email: string | null;
   telegram_user_id: number | null;
   telegram_username: string | null;
   telegram_link_code: string | null;
@@ -48,7 +49,7 @@ export default function DashboardPage() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        router.push('/#auth');
+        router.push('/login?redirect=/boards');
         return;
       }
       setUser(user);
@@ -108,11 +109,30 @@ export default function DashboardPage() {
               .select('*', { count: 'exact', head: true })
               .eq('board_id', b.id);
 
+            // Fetch recent thumbnails
+            const { data: recentLinks } = await supabase
+              .from('links')
+              .select('thumbnail_url')
+              .eq('board_id', b.id)
+              .not('thumbnail_url', 'is', null)
+              .neq('thumbnail_url', '')
+              .order('created_at', { ascending: false })
+              .limit(4);
+
+            // Fetch member usernames
+            const { data: membersData } = await supabase
+              .from('board_members')
+              .select('profiles(username)')
+              .eq('board_id', b.id)
+              .limit(5);
+
             boardList.push({
               ...b,
               role: row.role,
               member_count: memberCount || 1,
               link_count: linkCount || 0,
+              thumbnails: recentLinks?.map(l => l.thumbnail_url).filter(Boolean) || [],
+              members: membersData?.map(m => (m.profiles as any)?.username).filter(Boolean) || [],
             });
           }
         }
@@ -181,7 +201,7 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="container" style={{ padding: '4rem 0', textAlign: 'center' }}>
+      <div className="container pt-28" style={{ paddingBottom: '4rem', textAlign: 'center' }}>
         <p className="text-secondary">Loading your boards...</p>
       </div>
     );
@@ -193,107 +213,79 @@ export default function DashboardPage() {
     : `https://t.me/${telegramBotUsername}`;
 
   return (
-    <div className="container" style={{ paddingBottom: '5rem' }}>
+    <div className="container pt-28" style={{ paddingBottom: '5rem' }}>
       {/* Telegram Connection Banner */}
-      <div className="telegram-banner" style={{ marginTop: '2rem' }}>
-        <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
-          <div className="telegram-banner-icon">🤖</div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
-              <h3 style={{ fontSize: '1.25rem', margin: 0 }}>Telegram Bot Agent</h3>
-              {profile?.telegram_user_id ? (
-                <span className="badge badge-success">✓ Connected</span>
-              ) : (
-                <span className="badge badge-telegram">Action Required</span>
-              )}
+      {!profile?.telegram_user_id && (
+        <div className="telegram-banner" style={{ marginTop: '2rem' }}>
+          <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'center' }}>
+            <div className="telegram-banner-icon">🤖</div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem' }}>
+                <h3 style={{ fontSize: '1.25rem', margin: 0 }}>Action Required</h3>
+                <span className="badge badge-telegram">Connect Telegram</span>
+              </div>
+              <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', margin: 0 }}>
+                Connect your Telegram account so any link you share with the bot instantly drops onto your board.
+              </p>
             </div>
-            <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem', margin: 0 }}>
-              {profile?.telegram_user_id
-                ? `Linked to @${profile.telegram_username || 'Telegram User'}. Links you send to @${telegramBotUsername} will instantly appear on your active board.`
-                : 'Connect your Telegram account so any link you share with the bot instantly drops onto your board.'}
-            </p>
           </div>
-        </div>
-
-        <div>
-          {profile?.telegram_user_id ? (
-            <a
-              href={`https://t.me/${telegramBotUsername}`}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-secondary btn-sm"
-            >
-              Open Bot in Telegram ↗
-            </a>
-          ) : (
-            <a
-              href={telegramConnectUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="btn btn-telegram"
-              id="connect-telegram-btn"
-            >
+          <div>
+            <a href={telegramConnectUrl} target="_blank" rel="noreferrer" className="btn btn-telegram" id="connect-telegram-btn">
               Connect Telegram 🚀
             </a>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Boards Section */}
-      <div className="dashboard-header">
-        <div>
-          <h2>Your Boards</h2>
-          <p className="text-secondary" style={{ fontSize: '0.95rem' }}>
-            Shared collections of content for your groups.
-          </p>
-        </div>
-
-        <button
-          onClick={() => {
-            setShowCreateModal(true);
-            setNewBoardName('');
-            setNewBoardSlug('');
-            setCreateError('');
-          }}
-          className="btn btn-primary"
-          id="create-board-modal-btn"
-        >
+      <div className="boards-header">
+        <h2>Your Boards</h2>
+        <button className="btn btn-primary" onClick={() => setShowCreateModal(true)} id="open-create-board-btn">
           + Create Board
         </button>
       </div>
 
       {boards.length === 0 ? (
-        <div className="card empty-state" style={{ padding: '4rem 2rem' }}>
-          <div className="empty-state-icon">📂</div>
-          <h3 style={{ marginBottom: '0.5rem' }}>No Boards Yet</h3>
-          <p style={{ maxWidth: '400px', margin: '0 auto 1.5rem', color: 'var(--color-text-secondary)' }}>
-            Create your first board to start collecting memes, videos, and links with your friends.
+        <div className="empty-state">
+          <div className="empty-state-icon">📁</div>
+          <h3>No Boards Yet</h3>
+          <p className="text-secondary" style={{ marginBottom: '1.5rem', maxWidth: '400px' }}>
+            Boards are private spaces where your group's content is saved. Create one to get started.
           </p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="btn btn-primary"
-            id="first-board-btn"
-          >
+          <button className="btn btn-primary btn-lg" onClick={() => setShowCreateModal(true)}>
             Create Your First Board
           </button>
         </div>
       ) : (
         <div className="boards-grid">
           {boards.map((board) => (
-            <Link key={board.id} href={`/b/${board.slug}`} className="card card-hover board-card">
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <h3 className="board-card-name">{board.name}</h3>
-                  <span className="badge badge-primary" style={{ fontSize: '0.7rem' }}>
-                    {board.role}
-                  </span>
+            <Link href={`/b/${board.slug}`} key={board.id} className="board-card">
+              <div className="board-card-content">
+                <div className="board-card-thumbnails">
+                  {board.thumbnails && board.thumbnails.length > 0 ? (
+                    board.thumbnails.map((thumb, idx) => (
+                      <div key={idx} className="board-card-thumb" style={{ backgroundImage: `url(${thumb})` }} />
+                    ))
+                  ) : (
+                    <div className="board-card-thumb-empty" />
+                  )}
                 </div>
-                <div className="board-card-slug font-mono">/b/{board.slug}</div>
-              </div>
-
-              <div className="board-card-footer">
-                <span>👥 {board.member_count} {board.member_count === 1 ? 'member' : 'members'}</span>
-                <span>🔗 {board.link_count} {board.link_count === 1 ? 'link' : 'links'}</span>
+                <h3 className="board-card-title">{board.name}</h3>
+                
+                <div className="board-card-stats">
+                  <span>{board.member_count} members</span>
+                  <span>•</span>
+                  <span>{board.link_count} posts</span>
+                </div>
+                
+                <div className="board-card-members">
+                  {board.members?.map((m, i) => (
+                    <span key={i} className="board-member-pill">@{m}</span>
+                  ))}
+                  {board.member_count && board.member_count > (board.members?.length || 0) && (
+                    <span className="board-member-pill more">+{board.member_count - (board.members?.length || 0)}</span>
+                  )}
+                </div>
               </div>
             </Link>
           ))}
@@ -302,111 +294,65 @@ export default function DashboardPage() {
 
       {/* Create Board Modal */}
       {showCreateModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-            padding: '1rem',
-          }}
-        >
-          <div className="card" style={{ width: '100%', maxWidth: '460px', padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ margin: 0 }}>Create a New Board</h3>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                style={{ color: 'var(--color-text-muted)', fontSize: '1.25rem', padding: '0.25rem' }}
-              >
-                ✕
-              </button>
-            </div>
+        <div className="modal-backdrop" onClick={() => setShowCreateModal(false)}>
+          <div className="modal-content compact-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setShowCreateModal(false)}>
+              ×
+            </button>
+            <h3 style={{ marginBottom: '1.5rem', fontSize: '1.25rem' }}>Create a New Board</h3>
 
             {createError && (
-              <div
-                style={{
-                  padding: '0.75rem',
-                  borderRadius: 'var(--radius-md)',
-                  marginBottom: '1rem',
-                  fontSize: '0.85rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                  color: 'var(--color-danger)',
-                }}
-              >
+              <div className="error-text" style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 'var(--radius-md)' }}>
                 {createError}
               </div>
             )}
 
-            <form onSubmit={handleCreateBoard} className="flex flex-col gap-4">
-              <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.85rem',
-                    color: 'var(--color-text-secondary)',
-                    marginBottom: '0.35rem',
-                    fontWeight: 500,
-                  }}
-                >
-                  Board Name
-                </label>
+            <form onSubmit={handleCreateBoard}>
+              <div style={{ marginBottom: '1rem' }}>
+                <label className="input-label">Board Name</label>
                 <input
                   type="text"
-                  required
-                  placeholder="e.g. The Boys, Weekend Chaos, Movie Night"
+                  className="input"
+                  placeholder="e.g. The Boys, Movie Club"
                   value={newBoardName}
                   onChange={handleNameChange}
-                  className="input"
-                  id="board-name-input"
+                  required
                   autoFocus
+                  id="new-board-name-input"
                 />
               </div>
 
-              <div>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: '0.85rem',
-                    color: 'var(--color-text-secondary)',
-                    marginBottom: '0.35rem',
-                    fontWeight: 500,
-                  }}
-                >
-                  Shareable Slug (URL)
-                </label>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label className="input-label">URL Slug</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span className="text-muted font-mono" style={{ fontSize: '0.9rem' }}>
+                  <span className="text-secondary" style={{ fontSize: '0.9rem' }}>
                     memeboard.app/b/
                   </span>
                   <input
                     type="text"
-                    required
-                    placeholder="the-boys"
+                    className="input"
+                    style={{ flex: 1 }}
                     value={newBoardSlug}
                     onChange={(e) => setNewBoardSlug(slugify(e.target.value))}
-                    className="input font-mono"
-                    id="board-slug-input"
+                    required
+                    id="new-board-slug-input"
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
                   className="btn btn-secondary"
+                  onClick={() => setShowCreateModal(false)}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={createLoading}
                   className="btn btn-primary"
-                  id="board-submit-btn"
+                  disabled={createLoading || !newBoardName.trim() || !newBoardSlug.trim()}
+                  id="submit-create-board-btn"
                 >
                   {createLoading ? 'Creating...' : 'Create Board'}
                 </button>
