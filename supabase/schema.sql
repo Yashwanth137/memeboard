@@ -1,5 +1,6 @@
 -- ============================================================
 -- MEMEBOARD DATABASE SCHEMA (SUPABASE POSTGRESQL)
+-- Fully Idempotent - Safe to run repeatedly
 -- ============================================================
 
 -- 1. Profiles Table (extending auth.users)
@@ -39,6 +40,30 @@ create table if not exists public.links (
   url text not null,
   created_at timestamptz default now() not null
 );
+
+-- Ensure foreign key points to profiles if table was previously created
+do $$
+begin
+  if exists (
+    select 1 from information_schema.table_constraints
+    where constraint_name = 'links_submitted_by_fkey'
+    and table_name = 'links'
+  ) then
+    alter table public.links drop constraint links_submitted_by_fkey;
+  end if;
+  
+  if not exists (
+    select 1 from information_schema.table_constraints
+    where constraint_name = 'links_submitted_by_profiles_fkey'
+    and table_name = 'links'
+  ) then
+    alter table public.links 
+      add constraint links_submitted_by_profiles_fkey 
+      foreign key (submitted_by) references public.profiles(id) on delete set null;
+  end if;
+exception
+  when others then null;
+end $$;
 
 -- ============================================================
 -- INDEXES FOR PERFORMANCE
@@ -103,41 +128,52 @@ alter table public.board_members enable row level security;
 alter table public.links enable row level security;
 
 -- Profiles: Anyone can view usernames/profiles, user can update their own
+drop policy if exists "Allow read profiles" on public.profiles;
 create policy "Allow read profiles" on public.profiles
   for select using (true);
 
+drop policy if exists "Allow user to update own profile" on public.profiles;
 create policy "Allow user to update own profile" on public.profiles
   for update using (auth.uid() = id);
 
 -- Boards: Anyone can view boards (for shared / viral links)
+drop policy if exists "Allow read boards" on public.boards;
 create policy "Allow read boards" on public.boards
   for select using (true);
 
+drop policy if exists "Allow authenticated users to create boards" on public.boards;
 create policy "Allow authenticated users to create boards" on public.boards
   for insert with check (auth.role() = 'authenticated' and auth.uid() = owner_id);
 
+drop policy if exists "Allow owners to update boards" on public.boards;
 create policy "Allow owners to update boards" on public.boards
   for update using (auth.uid() = owner_id);
 
+drop policy if exists "Allow owners to delete boards" on public.boards;
 create policy "Allow owners to delete boards" on public.boards
   for delete using (auth.uid() = owner_id);
 
 -- Board Members: Anyone can view members of boards
+drop policy if exists "Allow read board members" on public.board_members;
 create policy "Allow read board members" on public.board_members
   for select using (true);
 
+drop policy if exists "Allow authenticated users to join board" on public.board_members;
 create policy "Allow authenticated users to join board" on public.board_members
   for insert with check (auth.role() = 'authenticated' and auth.uid() = user_id);
 
+drop policy if exists "Allow members to leave or owner to remove" on public.board_members;
 create policy "Allow members to leave or owner to remove" on public.board_members
   for delete using (auth.uid() = user_id or exists (
     select 1 from public.boards b where b.id = board_id and b.owner_id = auth.uid()
   ));
 
 -- Links: Anyone can view links for shareable boards
+drop policy if exists "Allow read links" on public.links;
 create policy "Allow read links" on public.links
   for select using (true);
 
+drop policy if exists "Allow board members to insert links" on public.links;
 create policy "Allow board members to insert links" on public.links
   for insert with check (
     auth.role() = 'authenticated' and
@@ -150,5 +186,15 @@ create policy "Allow board members to insert links" on public.links
 -- ============================================================
 -- SUPABASE REALTIME REPLICATION
 -- ============================================================
--- Enable Postgres Changes listening on links so Board feed updates instantly
-alter publication supabase_realtime add table public.links;
+-- Enable Postgres Changes listening on links (only if not already added)
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables 
+    where pubname = 'supabase_realtime' 
+    and schemaname = 'public' 
+    and tablename = 'links'
+  ) then
+    alter publication supabase_realtime add table public.links;
+  end if;
+end $$;
