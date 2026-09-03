@@ -328,7 +328,7 @@ export default function BoardPage() {
         const { data: rawLinks, error: linksErr } = await query;
 
         if (linksErr) {
-          console.error('Error querying links in PostgreSQL:', linksErr);
+          console.error('Error querying links in PostgreSQL:', linksErr.message || linksErr.code, linksErr);
           if (!append) setLinks([]);
           return;
         }

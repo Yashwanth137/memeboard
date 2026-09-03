@@ -3,6 +3,35 @@
 -- Fully Idempotent - Safe to run repeatedly
 -- ============================================================
 
+-- 0. Non-recursive Membership Helper Functions in Private Schema (Unexposed to PostgREST API)
+drop function if exists public.is_board_member(uuid, uuid) cascade;
+drop function if exists public.is_board_owner(uuid, uuid) cascade;
+
+create schema if not exists app_private;
+grant usage on schema app_private to authenticated, service_role;
+
+create or replace function app_private.is_board_member(p_board_id uuid, p_user_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from public.board_members
+    where board_id = p_board_id and user_id = p_user_id
+  );
+$$ language sql security definer set search_path = public, pg_temp;
+
+create or replace function app_private.is_board_owner(p_board_id uuid, p_user_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from public.boards
+    where id = p_board_id and owner_id = p_user_id
+  );
+$$ language sql security definer set search_path = public, pg_temp;
+
+revoke execute on function app_private.is_board_member(uuid, uuid) from public, anon;
+grant execute on function app_private.is_board_member(uuid, uuid) to authenticated, service_role;
+
+revoke execute on function app_private.is_board_owner(uuid, uuid) from public, anon;
+grant execute on function app_private.is_board_owner(uuid, uuid) to authenticated, service_role;
+
 -- 1. Profiles Table: Defense-in-depth & public_profiles View
 alter table public.profiles enable row level security;
 
@@ -16,21 +45,9 @@ drop policy if exists "Allow reading profiles of board members" on public.profil
 create policy "Allow user to read own full profile" on public.profiles
   for select using (auth.uid() = id);
 
--- Allow reading public profile data for users who share a board
+-- Allow reading public profile data for authenticated users (columns restricted below)
 create policy "Allow reading profiles of board members" on public.profiles
-  for select using (
-    exists (
-      select 1 from public.board_members bm1
-      join public.board_members bm2 on bm1.board_id = bm2.board_id
-      where bm1.user_id = auth.uid() and bm2.user_id = profiles.id
-    ) or
-    exists (
-      select 1 from public.boards b
-      where b.owner_id = auth.uid() or exists (
-        select 1 from public.board_members bm where bm.board_id = b.id and bm.user_id = auth.uid()
-      )
-    )
-  );
+  for select using (auth.role() = 'authenticated');
 
 -- User can update only their own profile
 create policy "Allow user to update own profile" on public.profiles
@@ -56,14 +73,10 @@ drop policy if exists "Allow owners to update boards" on public.boards;
 drop policy if exists "Allow owners to delete boards" on public.boards;
 drop policy if exists "Allow members and owners to read boards" on public.boards;
 
--- Only members and owners can read the board
+-- Only members and owners can read the board (non-recursive via helper)
 create policy "Allow members and owners to read boards" on public.boards
   for select using (
-    auth.uid() = owner_id or
-    exists (
-      select 1 from public.board_members bm
-      where bm.board_id = boards.id and bm.user_id = auth.uid()
-    )
+    auth.uid() = owner_id or app_private.is_board_member(id, auth.uid())
   );
 
 create policy "Allow authenticated users to create boards" on public.boards
@@ -85,35 +98,23 @@ drop policy if exists "Allow user to leave or owner to remove" on public.board_m
 drop policy if exists "Allow members and owners to read board members" on public.board_members;
 drop policy if exists "Allow owners to add board members" on public.board_members;
 
--- Only members and owner of the board can see other members
+-- Members and owner of the board can see other members (non-recursive via helpers)
 create policy "Allow members and owners to read board members" on public.board_members
   for select using (
-    exists (
-      select 1 from public.board_members bm
-      where bm.board_id = board_members.board_id and bm.user_id = auth.uid()
-    ) or
-    exists (
-      select 1 from public.boards b
-      where b.id = board_members.board_id and b.owner_id = auth.uid()
-    )
+    auth.uid() = user_id or
+    app_private.is_board_owner(board_id, auth.uid()) or
+    app_private.is_board_member(board_id, auth.uid())
   );
 
 -- Direct client insert blocked; only board owner can directly insert (otherwise use atomic invite RPC)
 create policy "Allow owners to add board members" on public.board_members
   for insert with check (
-    exists (
-      select 1 from public.boards b
-      where b.id = board_members.board_id and b.owner_id = auth.uid()
-    )
+    app_private.is_board_owner(board_id, auth.uid())
   );
 
 create policy "Allow user to leave or owner to remove" on public.board_members
   for delete using (
-    auth.uid() = user_id or
-    exists (
-      select 1 from public.boards b
-      where b.id = board_members.board_id and b.owner_id = auth.uid()
-    )
+    auth.uid() = user_id or app_private.is_board_owner(board_id, auth.uid())
   );
 
 -- 4. Links Table: Member-only Read & Write
@@ -129,46 +130,26 @@ drop policy if exists "Allow author or board owner to delete links" on public.li
 
 create policy "Allow board members to read links" on public.links
   for select using (
-    exists (
-      select 1 from public.board_members bm
-      where bm.board_id = links.board_id and bm.user_id = auth.uid()
-    ) or
-    exists (
-      select 1 from public.boards b
-      where b.id = links.board_id and b.owner_id = auth.uid()
-    )
+    app_private.is_board_owner(board_id, auth.uid()) or
+    app_private.is_board_member(board_id, auth.uid())
   );
 
 create policy "Allow board members to insert links" on public.links
   for insert with check (
     auth.role() = 'authenticated' and (
-      exists (
-        select 1 from public.board_members bm
-        where bm.board_id = links.board_id and bm.user_id = auth.uid()
-      ) or
-      exists (
-        select 1 from public.boards b
-        where b.id = links.board_id and b.owner_id = auth.uid()
-      )
+      app_private.is_board_owner(board_id, auth.uid()) or
+      app_private.is_board_member(board_id, auth.uid())
     )
   );
 
 create policy "Allow author or board owner to update links" on public.links
   for update using (
-    auth.uid() = submitted_by or
-    exists (
-      select 1 from public.boards b
-      where b.id = links.board_id and b.owner_id = auth.uid()
-    )
+    auth.uid() = submitted_by or app_private.is_board_owner(board_id, auth.uid())
   );
 
 create policy "Allow author or board owner to delete links" on public.links
   for delete using (
-    auth.uid() = submitted_by or
-    exists (
-      select 1 from public.boards b
-      where b.id = links.board_id and b.owner_id = auth.uid()
-    )
+    auth.uid() = submitted_by or app_private.is_board_owner(board_id, auth.uid())
   );
 
 -- 5. Board Invites Table with SHA-256 Token Hashing
@@ -199,7 +180,7 @@ create policy "Allow board owner to manage invites" on public.board_invites
   );
 
 -- 6. Atomic Invite Token Redemption RPC Function
-drop function if exists public.join_board_with_token(text, text);
+drop function if exists public.join_board_with_token(text, text) cascade;
 
 create or replace function public.join_board_with_token(
   p_slug text,
@@ -434,7 +415,7 @@ $$ language plpgsql security definer set search_path = public, pg_temp;
 
 -- 9. Explicit Function Execution Permissions (Resolves Supabase Linter 0028 & 0029)
 -- Drop obsolete overloads with mutable search_path (Resolves Supabase Linter 0011)
-drop function if exists public.telegram_submit_link(bigint, text);
+drop function if exists public.telegram_submit_link(bigint, text) cascade;
 
 -- Internal trigger functions: prohibit direct RPC execution by any client role
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
