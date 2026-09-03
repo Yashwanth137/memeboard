@@ -1,5 +1,8 @@
 export const TELEGRAM_BOT_TOKEN =
-  process.env.telegram_bot_key || process.env.TELEGRAM_BOT_KEY || '';
+  process.env.TELEGRAM_BOT_TOKEN ||
+  process.env.telegram_bot_key ||
+  process.env.TELEGRAM_BOT_KEY ||
+  '';
 
 export const TELEGRAM_BOT_USERNAME = 'memeboard_bot';
 

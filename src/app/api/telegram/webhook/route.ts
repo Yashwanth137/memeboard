@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { extractUrls, sendTelegramMessage } from '@/lib/telegram';
 import { ingestLink } from '@/lib/ingestion/pipeline';
@@ -6,34 +7,49 @@ import { rateLimit } from '@/lib/security/rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
-    // 1. Webhook Secret Token Verification
+    // 1. Mandatory Webhook Secret Token Verification (Timing-safe)
     const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
-    if (configuredSecret) {
-      const incomingSecret = req.headers.get('x-telegram-bot-api-secret-token');
-      if (incomingSecret !== configuredSecret) {
-        return NextResponse.json({ error: 'Unauthorized: Invalid webhook secret' }, { status: 401 });
-      }
+    if (!configuredSecret) {
+      console.error('CRITICAL SECURITY ALERT: TELEGRAM_WEBHOOK_SECRET is not configured on server.');
+      return NextResponse.json(
+        { error: 'Server misconfiguration: Webhook secret not configured' },
+        { status: 500 }
+      );
+    }
+
+    const incomingSecret = req.headers.get('x-telegram-bot-api-secret-token') || '';
+    const incomingBuf = Buffer.from(incomingSecret, 'utf8');
+    const configuredBuf = Buffer.from(configuredSecret, 'utf8');
+
+    if (
+      incomingBuf.length !== configuredBuf.length ||
+      !crypto.timingSafeEqual(incomingBuf, configuredBuf)
+    ) {
+      return NextResponse.json({ error: 'Unauthorized: Invalid webhook secret' }, { status: 401 });
     }
 
     const body = await req.json();
 
     const message = body?.message;
-    if (!message || !message.text || !message.from) {
+    if (!message || (!message.text && !message.caption) || !message.from) {
       return NextResponse.json({ ok: true });
     }
 
     const chatId = message.chat.id;
+    const isGroup = message.chat.type === 'group' || message.chat.type === 'supergroup';
     const telegramUserId = message.from.id;
     const telegramUsername = message.from.username || message.from.first_name || 'Friend';
-    const text = message.text.trim();
+    const text = (message.text || message.caption || '').trim();
 
-    // 2. Shared Rate Limiting per Telegram chat ID
-    const rl = await rateLimit(`tg:${chatId}`, 20, 60);
+    // 2. Isolated Rate Limiting per Telegram User ID
+    const rl = await rateLimit(`tg:user:${telegramUserId}`, 20, 60);
     if (!rl.success) {
-      await sendTelegramMessage(
-        chatId,
-        '⚠️ <b>Slow down:</b> Too many requests sent recently. Please wait a minute before dropping more links.'
-      );
+      if (!isGroup) {
+        await sendTelegramMessage(
+          chatId,
+          '⚠️ <b>Slow down:</b> Too many requests sent recently. Please wait a minute before dropping more links.'
+        );
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -41,6 +57,14 @@ export async function POST(req: NextRequest) {
 
     // 3. Handle /start command (with or without connect code)
     if (text.startsWith('/start')) {
+      if (isGroup) {
+        await sendTelegramMessage(
+          chatId,
+          '🔒 <b>Security Notice:</b> Account linking with /start must be performed in a private direct message with the bot. Please send /start to @memeboard_bot in a private chat.'
+        );
+        return NextResponse.json({ ok: true });
+      }
+
       const parts = text.split(/\s+/);
       const code = parts[1]?.trim(); // /start <code>
 
@@ -90,14 +114,18 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Direct table fallback
+        // Direct table fallback with expiration check
         const { data: profile, error: profileErr } = await supabase
           .from('profiles')
           .select('*')
           .eq('telegram_link_code', code)
           .maybeSingle();
 
-        if (profileErr || !profile) {
+        const isExpired =
+          Boolean((profile as any)?.telegram_link_code_expires_at) &&
+          new Date((profile as any).telegram_link_code_expires_at) < new Date();
+
+        if (profileErr || !profile || isExpired) {
           const { data: alreadyLinked } = await supabase
             .from('profiles')
             .select('id, username, email')
@@ -125,7 +153,8 @@ export async function POST(req: NextRequest) {
             telegram_user_id: telegramUserId,
             telegram_username: telegramUsername,
             telegram_link_code: null,
-          })
+            telegram_link_code_expires_at: null,
+          } as any)
           .eq('id', profile.id);
 
         const { data: memberships } = await supabase
@@ -182,7 +211,10 @@ export async function POST(req: NextRequest) {
     // 4. Handle Link Submissions via Unified Ingestion Pipeline
     const urls = extractUrls(text);
     if (urls.length > 0) {
-      for (const url of urls) {
+      const MAX_BATCH_URLS = 5;
+      const targetUrls = urls.slice(0, MAX_BATCH_URLS);
+
+      for (const url of targetUrls) {
         const result = await ingestLink({
           source: 'telegram',
           telegramUserId,
@@ -190,35 +222,55 @@ export async function POST(req: NextRequest) {
         });
 
         if (result.success) {
-          await sendTelegramMessage(chatId, `Added to "${result.boardName}" 🚀`);
+          if (!isGroup) {
+            await sendTelegramMessage(chatId, `Added to "${result.boardName}" 🚀`);
+          } else {
+            // Group chat: preserve privacy, don't leak private board name
+            await sendTelegramMessage(chatId, `Saved link to Memeboard 🚀`);
+          }
         } else if (result.error === 'Telegram account not linked to Memeboard') {
-          await sendTelegramMessage(
-            chatId,
-            `⚠️ <b>Telegram Account Not Linked</b>\n\nPlease log in to Memeboard on the web and click "Connect Telegram" to link your account!`
-          );
+          if (!isGroup) {
+            await sendTelegramMessage(
+              chatId,
+              `⚠️ <b>Telegram Account Not Linked</b>\n\nPlease log in to Memeboard on the web and click "Connect Telegram" to link your account!`
+            );
+          }
           return NextResponse.json({ ok: true });
         } else if (result.error === 'No active board found for your account') {
-          await sendTelegramMessage(
-            chatId,
-            `⚠️ You don't have any boards yet.\n\nPlease create a board on your Memeboard dashboard first!`
-          );
+          if (!isGroup) {
+            await sendTelegramMessage(
+              chatId,
+              `⚠️ You don't have any boards yet.\n\nPlease create a board on your Memeboard dashboard first!`
+            );
+          }
           return NextResponse.json({ ok: true });
         } else {
-          await sendTelegramMessage(
-            chatId,
-            `⚠️ Could not add link: ${result.error || 'Unknown error'}`
-          );
+          if (!isGroup) {
+            await sendTelegramMessage(
+              chatId,
+              `⚠️ Could not add link: ${result.error || 'Unknown error'}`
+            );
+          }
         }
+      }
+
+      if (urls.length > MAX_BATCH_URLS && !isGroup) {
+        await sendTelegramMessage(
+          chatId,
+          `ℹ️ Capped at first ${MAX_BATCH_URLS} links to prevent flooding.`
+        );
       }
 
       return NextResponse.json({ ok: true });
     }
 
-    // Unrecognized text without URLs
-    await sendTelegramMessage(
-      chatId,
-      `Drop a link (Instagram, YouTube, Reddit, X, etc.) and I'll add it to your board! 🔗`
-    );
+    // Unrecognized text without URLs (only reply in private DM)
+    if (!isGroup) {
+      await sendTelegramMessage(
+        chatId,
+        `Drop a link (Instagram, YouTube, Reddit, X, etc.) and I'll add it to your board! 🔗`
+      );
+    }
 
     return NextResponse.json({ ok: true });
   } catch (error) {

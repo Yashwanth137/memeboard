@@ -77,9 +77,22 @@ export default function DashboardPage() {
 
               const { data: membersData } = await supabase
                 .from('board_members')
-                .select('profiles(username)')
+                .select('user_id')
                 .eq('board_id', b.id)
                 .limit(5);
+
+              let memberUsernames: string[] = [];
+              if (membersData && membersData.length > 0) {
+                const uids = membersData.map((m) => m.user_id).filter(Boolean);
+                const { data: profs } = await supabase
+                  .from('public_profiles')
+                  .select('username')
+                  .in('id', uids);
+                memberUsernames =
+                  profs
+                    ?.map((p) => p.username)
+                    .filter((u): u is string => Boolean(u)) || [];
+              }
 
               boardList.push({
                 ...b,
@@ -87,7 +100,7 @@ export default function DashboardPage() {
                 member_count: memberCount || 1,
                 link_count: linkCount || 0,
                 thumbnails: recentLinks?.map((l) => l.thumbnail_url).filter(Boolean) || [],
-                members: membersData?.map((m) => (m.profiles as any)?.username).filter(Boolean) || [],
+                members: memberUsernames,
               });
             }
           }

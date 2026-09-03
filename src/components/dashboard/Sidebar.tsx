@@ -42,8 +42,8 @@ interface SidebarProps {
   onSettingsClick: () => void;
   onSignOut: () => void;
   username: string;
-  provider?: string;
-  isAgentConnected?: boolean;
+  isTelegramConnected?: boolean;
+  isWhatsAppConnected?: boolean;
 }
 
 const AVATAR_COLORS = [
@@ -66,8 +66,8 @@ export default function Sidebar({
   onSettingsClick,
   onSignOut,
   username,
-  provider = 'WhatsApp',
-  isAgentConnected = true,
+  isTelegramConnected = false,
+  isWhatsAppConnected = false,
 }: SidebarProps) {
   const pathname = usePathname();
   const isMyBoardsActive = pathname === '/boards';
@@ -294,11 +294,12 @@ export default function Sidebar({
 
           {/* Section: FOOTER */}
           <div className="p-2.5 border-t border-border-subtle/70 space-y-2 shrink-0 bg-surface/40">
-            {/* Content Agent Component */}
+            {/* Content Agents Component */}
             <ConnectionStatus
               collapsed={collapsed}
-              provider={provider}
-              isConnected={isAgentConnected}
+              isTelegramConnected={isTelegramConnected}
+              isWhatsAppConnected={isWhatsAppConnected}
+              onOpenSettings={onSettingsClick}
             />
 
             <div className="h-px bg-border-subtle/40" />

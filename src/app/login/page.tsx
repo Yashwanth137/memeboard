@@ -45,9 +45,9 @@ function LoginForm() {
           return;
         }
 
-        // Check if username is already taken
+        // Check if username is already taken via public view
         const { data: existingUser } = await supabase
-          .from('profiles')
+          .from('public_profiles')
           .select('id')
           .eq('username', cleanUsername)
           .maybeSingle();

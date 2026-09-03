@@ -4,13 +4,18 @@ import path from 'path';
 // 1. Read .env file to get telegram_bot_key
 let botToken = process.env.telegram_bot_key || process.env.TELEGRAM_BOT_KEY;
 
-if (!botToken && fs.existsSync('.env')) {
+let webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+
+if (fs.existsSync('.env')) {
   const envContent = fs.readFileSync('.env', 'utf8');
   for (const line of envContent.split('\n')) {
-    const match = line.match(/^\s*(telegram_bot_key|TELEGRAM_BOT_KEY)\s*=\s*(.*)\s*$/i);
-    if (match) {
-      botToken = match[2].trim().replace(/^["']|["']$/g, '');
-      break;
+    const tokenMatch = line.match(/^\s*(telegram_bot_key|TELEGRAM_BOT_KEY|TELEGRAM_BOT_TOKEN)\s*=\s*(.*)\s*$/i);
+    if (tokenMatch && !botToken) {
+      botToken = tokenMatch[2].trim().replace(/^["']|["']$/g, '');
+    }
+    const secretMatch = line.match(/^\s*TELEGRAM_WEBHOOK_SECRET\s*=\s*(.*)\s*$/i);
+    if (secretMatch && !webhookSecret) {
+      webhookSecret = secretMatch[1].trim().replace(/^["']|["']$/g, '');
     }
   }
 }
@@ -71,7 +76,10 @@ async function poll() {
           try {
             const forwardRes = await fetch(LOCAL_WEBHOOK_URL, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                ...(webhookSecret ? { 'x-telegram-bot-api-secret-token': webhookSecret } : {}),
+              },
               body: JSON.stringify(update),
             });
 

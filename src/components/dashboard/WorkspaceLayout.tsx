@@ -46,28 +46,27 @@ export default function WorkspaceLayout({
         if (!user || !isMounted) return;
         setUser(user);
 
-        let { data: prof } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (!prof && isMounted) {
-          const newCode = Math.random().toString(36).substring(2, 10);
-          const { data: createdProf } = await supabase
-            .from('profiles')
-            .insert({
-              id: user.id,
-              email: user.email,
-              username: user.user_metadata?.username || user.email?.split('@')[0],
-              telegram_link_code: newCode,
-            })
-            .select()
-            .single();
-          prof = createdProf;
+        let prof: any = null;
+        try {
+          const res = await fetch('/api/me/profile');
+          if (res.ok) {
+            const json = await res.json();
+            prof = json.profile;
+          }
+        } catch (e) {
+          console.warn('Could not fetch profile via /api/me/profile, falling back to direct client:', e);
         }
 
-        if (isMounted) {
+        if (!prof) {
+          const { data: directProf } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .maybeSingle();
+          prof = directProf;
+        }
+
+        if (isMounted && prof) {
           setProfile(prof);
         }
 
@@ -110,7 +109,8 @@ export default function WorkspaceLayout({
 
   const username = profile?.username || user?.email?.split('@')[0] || 'user';
   const email = user?.email || '';
-  const isAgentConnected = Boolean(profile?.telegram_user_id);
+  const isTelegramConnected = Boolean(profile?.telegram_user_id);
+  const isWhatsAppConnected = Boolean((profile as any)?.whatsapp_phone_number);
 
   return (
     <div className="min-h-screen bg-page text-text-primary bg-noise relative flex flex-col">
@@ -133,8 +133,8 @@ export default function WorkspaceLayout({
           onSettingsClick={() => setShowSettingsModal(true)}
           onSignOut={handleSignOut}
           username={username}
-          provider="WhatsApp"
-          isAgentConnected={isAgentConnected}
+          isTelegramConnected={isTelegramConnected}
+          isWhatsAppConnected={isWhatsAppConnected}
         />
 
         {/* Main Content Viewport */}
@@ -173,6 +173,10 @@ export default function WorkspaceLayout({
             onClose={() => setShowSettingsModal(false)}
             username={username}
             email={email}
+            isTelegramConnected={isTelegramConnected}
+            telegramUsername={profile?.telegram_username || null}
+            telegramLinkCode={profile?.telegram_link_code || null}
+            isWhatsAppConnected={isWhatsAppConnected}
             onSignOut={handleSignOut}
           />
         </>

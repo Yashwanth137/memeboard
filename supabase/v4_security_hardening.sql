@@ -32,7 +32,8 @@ grant execute on function app_private.is_board_member(uuid, uuid) to authenticat
 revoke execute on function app_private.is_board_owner(uuid, uuid) from public, anon;
 grant execute on function app_private.is_board_owner(uuid, uuid) to authenticated, service_role;
 
--- 1. Profiles Table: Defense-in-depth & public_profiles View
+-- 1. Profiles Table: Defense-in-depth & Private Token Protection
+alter table public.profiles add column if not exists telegram_link_code_expires_at timestamptz;
 alter table public.profiles enable row level security;
 
 -- Drop insecure open read policy if exists
@@ -41,22 +42,40 @@ drop policy if exists "Allow user to read own full profile" on public.profiles;
 drop policy if exists "Allow user to update own profile" on public.profiles;
 drop policy if exists "Allow reading profiles of board members" on public.profiles;
 
--- Strict row policy: User can only read their own full profile row
+-- Strict row policy: User can read their own profile, or fellow members on shared boards
 create policy "Allow user to read own full profile" on public.profiles
   for select using (auth.uid() = id);
 
--- Allow reading public profile data for authenticated users (columns restricted below)
 create policy "Allow reading profiles of board members" on public.profiles
-  for select using (auth.role() = 'authenticated');
+  for select using (
+    exists (
+      select 1 from public.board_members bm1
+      join public.board_members bm2 on bm1.board_id = bm2.board_id
+      where bm1.user_id = auth.uid() and bm2.user_id = profiles.id
+    )
+  );
 
 -- User can update only their own profile
 create policy "Allow user to update own profile" on public.profiles
   for update using (auth.uid() = id);
 
--- Column-level privilege restriction: revoke direct access to sensitive columns from client roles
-revoke all on public.profiles from anon, authenticated;
-grant select (id, username, created_at) on public.profiles to authenticated, anon;
+-- Table privilege grants
+grant select on public.profiles to authenticated;
 grant update (username) on public.profiles to authenticated;
+
+-- Drop obsolete public function to satisfy Supabase Linter 0029
+drop function if exists public.get_member_profiles(uuid[]) cascade;
+
+-- Member Profile Resolver in app_private schema (never exposed via PostgREST)
+create or replace function app_private.get_member_profiles(p_user_ids uuid[])
+returns table(id uuid, username text) as $$
+  select p.id, p.username
+  from public.profiles p
+  where p.id = any(p_user_ids);
+$$ language sql security definer set search_path = public, pg_temp;
+
+revoke execute on function app_private.get_member_profiles(uuid[]) from public, anon;
+grant execute on function app_private.get_member_profiles(uuid[]) to authenticated, service_role;
 
 -- Create a secure public view with security_invoker = true (satisfies linter rule 0010_security_definer_view)
 create or replace view public.public_profiles with (security_invoker = true) as
@@ -300,13 +319,14 @@ returns trigger as $$
 declare
   generated_code text;
 begin
-  generated_code := lower(substr(md5(random()::text || clock_timestamp()::text), 1, 8));
-  insert into public.profiles (id, email, username, telegram_link_code)
+  generated_code := encode(gen_random_bytes(6), 'hex');
+  insert into public.profiles (id, email, username, telegram_link_code, telegram_link_code_expires_at)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1)),
-    generated_code
+    generated_code,
+    clock_timestamp() + interval '24 hours'
   )
   on conflict (id) do update
   set email = excluded.email;
@@ -336,7 +356,8 @@ declare
 begin
   select * into v_profile
   from public.profiles
-  where telegram_link_code = p_code;
+  where telegram_link_code = p_code
+    and (telegram_link_code_expires_at is null or telegram_link_code_expires_at > clock_timestamp());
 
   if not found then
     return json_build_object('success', false, 'error', 'Invalid or expired connect code');
@@ -345,7 +366,8 @@ begin
   update public.profiles
   set telegram_user_id = p_telegram_user_id,
       telegram_username = p_telegram_username,
-      telegram_link_code = null
+      telegram_link_code = null,
+      telegram_link_code_expires_at = null
   where id = v_profile.id;
 
   select row_to_json(b) into v_board
@@ -360,6 +382,45 @@ begin
     'username', coalesce(v_profile.username, v_profile.email),
     'board_name', v_board->>'name'
   );
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+-- 8b. Authenticated User Token Regeneration and Unlinking
+create or replace function public.generate_telegram_link_code()
+returns text as $$
+declare
+  v_code text;
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  v_code := encode(gen_random_bytes(6), 'hex');
+
+  update public.profiles
+  set telegram_link_code = v_code,
+      telegram_link_code_expires_at = clock_timestamp() + interval '15 minutes'
+  where id = auth.uid();
+
+  return v_code;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+create or replace function public.unlink_telegram_account()
+returns boolean as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Authentication required';
+  end if;
+
+  update public.profiles
+  set telegram_user_id = null,
+      telegram_username = null,
+      telegram_link_code = null,
+      telegram_link_code_expires_at = null
+  where id = auth.uid();
+
+  return true;
 end;
 $$ language plpgsql security definer set search_path = public, pg_temp;
 
@@ -432,6 +493,12 @@ grant execute on function public.join_board_with_token(text, text, uuid) to serv
 -- Telegram bot functions: webhook/service_role only
 revoke execute on function public.link_telegram_account(text, bigint, text) from public, anon, authenticated;
 grant execute on function public.link_telegram_account(text, bigint, text) to service_role;
+
+revoke execute on function public.generate_telegram_link_code() from public, anon;
+grant execute on function public.generate_telegram_link_code() to authenticated, service_role;
+
+revoke execute on function public.unlink_telegram_account() from public, anon;
+grant execute on function public.unlink_telegram_account() to authenticated, service_role;
 
 revoke execute on function public.telegram_submit_link(bigint, text, text, text, uuid) from public, anon, authenticated;
 grant execute on function public.telegram_submit_link(bigint, text, text, text, uuid) to service_role;

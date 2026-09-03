@@ -133,7 +133,7 @@ export default function BoardPage() {
       let ownerUsername: string | null = null;
       if (bData.owner_id) {
         const { data: pData } = await supabase
-          .from('profiles')
+          .from('public_profiles')
           .select('username')
           .eq('id', bData.owner_id)
           .single();
@@ -171,18 +171,23 @@ export default function BoardPage() {
         .order('name');
       if (catData) setCategories(catData);
 
-      // Fetch Board Members and Authors for User filter
+      // Fetch Board Members for User filter (Safe display columns only)
       const { data: memberRows } = await supabase
         .from('board_members')
-        .select('user_id, profiles(id, username, email)')
+        .select('user_id')
         .eq('board_id', bData.id);
 
       const memberMap = new Map<string, string>();
-      if (memberRows) {
-        memberRows.forEach((row: any) => {
-          const p = row.profiles;
-          if (row.user_id) {
-            memberMap.set(row.user_id, p?.username ? `@${p.username}` : 'Member');
+      if (memberRows && memberRows.length > 0) {
+        const uids = memberRows.map((r) => r.user_id).filter(Boolean);
+        const { data: profs } = await supabase
+          .from('public_profiles')
+          .select('id, username')
+          .in('id', uids);
+
+        profs?.forEach((p) => {
+          if (p.id) {
+            memberMap.set(p.id, p.username ? `@${p.username}` : 'Member');
           }
         });
       }
@@ -342,8 +347,8 @@ export default function BoardPage() {
           const profilesMap = new Map<string, any>();
           if (submitterIds.length > 0) {
             const { data: profs } = await supabase
-              .from('profiles')
-              .select('id, username, email')
+              .from('public_profiles')
+              .select('id, username')
               .in('id', submitterIds);
             profs?.forEach((p) => profilesMap.set(p.id, p));
           }
@@ -470,8 +475,8 @@ export default function BoardPage() {
           let profile = null;
           if (newRow.submitted_by) {
             const { data: p } = await supabase
-              .from('profiles')
-              .select('id, username, email')
+              .from('public_profiles')
+              .select('id, username')
               .eq('id', newRow.submitted_by)
               .single();
             profile = p;
