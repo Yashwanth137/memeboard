@@ -65,3 +65,12 @@ The ingestion pipeline (`src/lib/ingestion/pipeline.ts`) standardizes all submis
    - **X / Twitter**: Enriched via `api.fxtwitter.com` (extracts video thumbnails vs photo galleries).
    - **Reddit**: Enriched via `vxreddit.com` (extracts `video.other` / `twitter:player` and direct MP4/m3u8 metadata without hitting Reddit's 403 blocks) with fallback to Reddit oEmbed.
    - **YouTube / Instagram**: Enriched with direct oEmbed and responsive embed parameters.
+
+---
+
+## 4. Known Platform Limitations & Security Advisor Notes
+
+- **Leaked Password Protection (`auth_leaked_password_protection`)**:
+  Supabase's Security Advisor flags this warning when checking against the HaveIBeenPwned leaked credentials database is disabled. In Supabase, this feature is restricted to paid plans (Pro/Team tiers). For open-source and free-tier environments, this remains disabled by design as an upstream platform tier constraint; no redundant custom replacement is implemented simply to make the advisor green.
+- **Function Execution Privileges (`SECURITY DEFINER` RPCs)**:
+  All internal `SECURITY DEFINER` functions (`join_board_with_token`, `link_telegram_account`, `check_rate_limit`, `handle_new_user`, `handle_new_board`) have their `EXECUTE` privileges revoked from client roles (`anon`, `authenticated`). They are executed strictly by `service_role` via Next.js server-side API routes, preventing direct client invocation via PostgREST `/rest/v1/rpc/`.

@@ -81,6 +81,7 @@ alter table public.board_members enable row level security;
 drop policy if exists "Allow read board members" on public.board_members;
 drop policy if exists "Allow authenticated users to join board" on public.board_members;
 drop policy if exists "Allow members to leave or owner to remove" on public.board_members;
+drop policy if exists "Allow user to leave or owner to remove" on public.board_members;
 drop policy if exists "Allow members and owners to read board members" on public.board_members;
 drop policy if exists "Allow owners to add board members" on public.board_members;
 
@@ -198,15 +199,18 @@ create policy "Allow board owner to manage invites" on public.board_invites
   );
 
 -- 6. Atomic Invite Token Redemption RPC Function
+drop function if exists public.join_board_with_token(text, text);
+
 create or replace function public.join_board_with_token(
   p_slug text,
-  p_token_hash text
+  p_token_hash text,
+  p_user_id uuid default null
 )
 returns json as $$
 declare
   v_board public.boards%rowtype;
   v_invite public.board_invites%rowtype;
-  v_caller_id uuid := auth.uid();
+  v_caller_id uuid := coalesce(p_user_id, auth.uid());
   v_already_member boolean;
 begin
   if v_caller_id is null then
@@ -440,13 +444,13 @@ revoke execute on function public.handle_new_board() from public, anon, authenti
 revoke execute on function public.check_rate_limit(text, integer, integer) from public, anon, authenticated;
 grant execute on function public.check_rate_limit(text, integer, integer) to service_role;
 
--- Invite token redemption: authenticated users only, prohibit anon access
-revoke execute on function public.join_board_with_token(text, text) from public, anon;
-grant execute on function public.join_board_with_token(text, text) to authenticated, service_role;
+-- Invite token redemption: internal utility called via Next.js service_role only
+revoke execute on function public.join_board_with_token(text, text, uuid) from public, anon, authenticated;
+grant execute on function public.join_board_with_token(text, text, uuid) to service_role;
 
 -- Telegram bot functions: webhook/service_role only
-revoke execute on function public.link_telegram_account(text, bigint, text) from public, anon;
-grant execute on function public.link_telegram_account(text, bigint, text) to authenticated, service_role;
+revoke execute on function public.link_telegram_account(text, bigint, text) from public, anon, authenticated;
+grant execute on function public.link_telegram_account(text, bigint, text) to service_role;
 
 revoke execute on function public.telegram_submit_link(bigint, text, text, text, uuid) from public, anon, authenticated;
 grant execute on function public.telegram_submit_link(bigint, text, text, text, uuid) to service_role;

@@ -47,12 +47,14 @@ export async function POST(
     // Compute SHA-256 hash of the presented token
     const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
 
-    // Attempt atomic redemption via RPC
-    const { data: rpcRes, error: rpcErr } = await (supabase as any).rpc(
+    // Attempt atomic redemption via admin service_role RPC
+    const adminSupabase = createAdminClient();
+    const { data: rpcRes, error: rpcErr } = await (adminSupabase as any).rpc(
       'join_board_with_token',
       {
         p_slug: slug,
         p_token_hash: tokenHash,
+        p_user_id: user.id,
       }
     );
 
