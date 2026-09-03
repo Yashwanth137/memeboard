@@ -64,9 +64,9 @@ export default function Navbar() {
         </Link>
 
         <div className="hidden md:flex items-center gap-8 font-medium text-sm text-text-muted">
-          <Link href="#how-it-works" className="hover:text-text-dark transition-colors">How it works</Link>
-          <Link href="#features" className="hover:text-text-dark transition-colors">Features</Link>
-          <Link href="#groups" className="hover:text-text-dark transition-colors">For groups</Link>
+          <Link href="/howitworks" className="hover:text-text-dark transition-colors">How it works</Link>
+          <Link href="/features" className="hover:text-text-dark transition-colors">Features</Link>
+          <Link href="/groups" className="hover:text-text-dark transition-colors">For groups</Link>
         </div>
 
         <div className="flex items-center gap-4">
@@ -86,8 +86,8 @@ export default function Navbar() {
               </div>
             </>
           ) : (
-            <Link 
-              href="/login" 
+            <Link
+              href="/login"
               className="px-5 py-2.5 rounded-full bg-slate-900 hover:bg-black !text-white text-sm font-bold transition-all flex items-center gap-2 shadow-md hover:shadow-lg"
             >
               <span className="text-white">Sign in</span>
