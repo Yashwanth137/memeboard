@@ -113,9 +113,9 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-bg-cream bg-noise">
+    <div className="min-h-screen flex items-start justify-center p-4 pt-32 bg-bg-cream bg-noise">
       <div className="w-full max-w-[440px] bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgba(0,0,0,0.06)] border border-white relative z-10">
-        
+
         <div className="text-center mb-6">
           <Link href="/" className="inline-flex items-center gap-2 mb-4">
             <Zap className="w-5 h-5 text-door-purple" fill="currentColor" />
@@ -134,11 +134,10 @@ function LoginForm() {
         <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
           <button
             type="button"
-            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
-              authMode === 'signin' 
-                ? 'bg-white text-text-dark shadow-sm' 
-                : 'text-text-muted hover:text-text-dark'
-            }`}
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${authMode === 'signin'
+              ? 'bg-white text-text-dark shadow-sm'
+              : 'text-text-muted hover:text-text-dark'
+              }`}
             onClick={() => {
               setAuthMode('signin');
               setMessage(null);
@@ -148,11 +147,10 @@ function LoginForm() {
           </button>
           <button
             type="button"
-            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${
-              authMode === 'signup' 
-                ? 'bg-white text-text-dark shadow-sm' 
-                : 'text-text-muted hover:text-text-dark'
-            }`}
+            className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${authMode === 'signup'
+              ? 'bg-white text-text-dark shadow-sm'
+              : 'text-text-muted hover:text-text-dark'
+              }`}
             onClick={() => {
               setAuthMode('signup');
               setMessage(null);
@@ -163,11 +161,10 @@ function LoginForm() {
         </div>
 
         {message && (
-          <div className={`p-4 rounded-xl mb-6 text-sm font-medium border ${
-            message.type === 'error' 
-              ? 'bg-red-50 text-red-600 border-red-100' 
-              : 'bg-green-50 text-green-600 border-green-100'
-          }`}>
+          <div className={`p-4 rounded-xl mb-6 text-sm font-medium border ${message.type === 'error'
+            ? 'bg-red-50 text-red-600 border-red-100'
+            : 'bg-green-50 text-green-600 border-green-100'
+            }`}>
             {message.text}
           </div>
         )}
