@@ -1,59 +1,53 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
-import { Category, LinkWithDetails } from '@/types/database';
+import { Board, Category, LinkWithDetails } from '@/types/database';
+import { detectPlatform, normalizePlatform, resolveEmbedInfo } from '@/lib/platform';
+import WorkspaceLayout from '@/components/dashboard/WorkspaceLayout';
+import { SidebarMember } from '@/components/dashboard/Sidebar';
 import BoardHeader from '@/components/board/BoardHeader';
-import FilterBar from '@/components/board/FilterBar';
-import FeedCard from '@/components/board/FeedCard';
+import BoardToolbar from '@/components/board/BoardToolbar';
+import PostGrid from '@/components/board/PostGrid';
+import EmptyBoard from '@/components/board/EmptyBoard';
+import AddLinkModal from '@/components/board/AddLinkModal';
+import ShareBoardModal from '@/components/board/ShareBoardModal';
 import PreviewModal from '@/components/board/PreviewModal';
 import EditPostModal from '@/components/board/EditPostModal';
-import QuickAddModal from '@/components/board/QuickAddModal';
-import SkeletonCard from '@/components/board/SkeletonCard';
-import { detectPlatform, resolveEmbedInfo } from '@/lib/platform';
-import Link from 'next/link';
-
-const PAGE_SIZE = 24;
-
-interface BoardData {
-  id: string;
-  name: string;
-  slug: string;
-  owner_id: string;
-  created_at: string;
-}
 
 interface MemberOption {
   id: string;
   name: string;
 }
 
+const PAGE_SIZE = 24;
+
 export default function BoardPage() {
   const params = useParams();
-  const slug = params?.slug as string;
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const slug = params?.slug as string;
+  const supabase = createClient();
 
-  const [supabase] = useState(() => createClient());
-
-  // Board State
-  const [board, setBoard] = useState<BoardData | null>(null);
+  // User & Board State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [board, setBoard] = useState<(Board & { owner_username?: string | null }) | null>(null);
   const [memberCount, setMemberCount] = useState<number>(1);
   const [isMember, setIsMember] = useState<boolean>(false);
   const [isOwner, setIsOwner] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [boardLoading, setBoardLoading] = useState<boolean>(true);
   const [boardError, setBoardError] = useState<string | null>(null);
 
-  // Metadata Filters & Options
+  // Dynamic Categories & Board Members
   const [categories, setCategories] = useState<Category[]>([]);
   const [members, setMembers] = useState<MemberOption[]>([]);
 
-  // Filter & Search State (Initialized from URL search params)
+  // Filter & Search State
+  const [mediaType, setMediaType] = useState<string>(searchParams.get('type') || '');
   const [platform, setPlatform] = useState<string>(searchParams.get('platform') || '');
-  const [category, setCategory] = useState<string>(searchParams.get('category') || '');
   const [member, setMember] = useState<string>(searchParams.get('member') || '');
+  const [date, setDate] = useState<string>(searchParams.get('date') || '');
   const [sort, setSort] = useState<'newest' | 'oldest'>(
     (searchParams.get('sort') as 'newest' | 'oldest') || 'newest'
   );
@@ -62,15 +56,17 @@ export default function BoardPage() {
 
   // Links & Pagination State
   const [links, setLinks] = useState<LinkWithDetails[]>([]);
+  const [totalCount, setTotalCount] = useState<number>(0);
   const [feedLoading, setFeedLoading] = useState<boolean>(true);
-  const [page, setPage] = useState<number>(0);
-  const [hasMore, setHasMore] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
+  const [hasMore, setHasMore] = useState<boolean>(false);
+  const [page, setPage] = useState<number>(0);
 
   // Active Modals State
   const [previewLink, setPreviewLink] = useState<LinkWithDetails | null>(null);
   const [editingLink, setEditingLink] = useState<LinkWithDetails | null>(null);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [showShareModal, setShowShareModal] = useState<boolean>(false);
 
   // Toast Notification State
   const [toast, setToast] = useState<string | null>(null);
@@ -86,17 +82,19 @@ export default function BoardPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(search);
+      setPage(0);
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
 
   // 2. Sync Active Filters with URL Search Params
   const updateUrlParams = useCallback(
-    (newPlatform: string, newCategory: string, newMember: string, newSort: string, newSearch: string) => {
+    (newType: string, newPlatform: string, newMember: string, newDate: string, newSort: string, newSearch: string) => {
       const sp = new URLSearchParams();
+      if (newType) sp.set('type', newType);
       if (newPlatform) sp.set('platform', newPlatform);
-      if (newCategory) sp.set('category', newCategory);
       if (newMember) sp.set('member', newMember);
+      if (newDate) sp.set('date', newDate);
       if (newSort !== 'newest') sp.set('sort', newSort);
       if (newSearch) sp.set('q', newSearch);
 
@@ -114,24 +112,38 @@ export default function BoardPage() {
       setBoardLoading(true);
 
       // Auth user
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: authData } = await supabase.auth.getUser();
+      const user = authData?.user || null;
       setCurrentUser(user);
 
-      // Board
+      // Fetch Board
       const { data: bData, error: bErr } = await supabase
         .from('boards')
         .select('*')
         .eq('slug', slug)
-        .maybeSingle();
+        .single();
 
       if (bErr || !bData) {
-        setBoardError('Board not found. Please check the URL.');
+        setBoardError('Board not found.');
         setBoardLoading(false);
         return;
       }
-      setBoard(bData);
+
+      // Fetch Owner Details
+      let ownerUsername: string | null = null;
+      if (bData.owner_id) {
+        const { data: pData } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', bData.owner_id)
+          .single();
+        if (pData?.username) ownerUsername = pData.username;
+      }
+
+      setBoard({
+        ...bData,
+        owner_username: ownerUsername,
+      });
       setIsOwner(user?.id === bData.owner_id);
 
       // Member Count & Membership
@@ -151,7 +163,7 @@ export default function BoardPage() {
         setIsMember(Boolean(m));
       }
 
-      // Fetch Categories (global defaults + board-specific)
+      // Fetch Categories
       const { data: catData } = await supabase
         .from('categories')
         .select('*')
@@ -175,7 +187,6 @@ export default function BoardPage() {
         });
       }
 
-      // Also ensure current user or any poster is included in the dropdown
       if (user && !memberMap.has(user.id)) {
         memberMap.set(user.id, 'You');
       }
@@ -197,43 +208,119 @@ export default function BoardPage() {
     loadInitialBoard();
   }, [loadInitialBoard]);
 
-  // 4. PostgreSQL Filtered & Paginated Feed Query
+  // Helper: Date filter bounds calculation
+  const getDateBounds = useCallback((dKey: string) => {
+    if (!dKey) return null;
+    const now = new Date();
+    if (dKey === 'today') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return { gte: start.toISOString() };
+    }
+    if (dKey === 'yesterday') {
+      const startYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return { gte: startYesterday.toISOString(), lt: startToday.toISOString() };
+    }
+    if (dKey === 'week') {
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return { gte: weekAgo.toISOString() };
+    }
+    if (dKey === 'month') {
+      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { gte: startMonth.toISOString() };
+    }
+    return null;
+  }, []);
+
+  // 4. PostgreSQL Filtered & Server-Paginated Feed Query
   const fetchLinks = useCallback(
-    async (pageIndex: number, append: boolean = false) => {
+    async (pageIndex: number = 0, append: boolean = false) => {
       if (!board) return;
 
       try {
         if (!append) setFeedLoading(true);
         else setLoadingMore(true);
 
-        // Build PostgreSQL query directly
+        // A. Count Query for Pagination
+        let countQuery = supabase
+          .from('links')
+          .select('*', { count: 'exact', head: true })
+          .eq('board_id', board.id);
+
+        if (mediaType) {
+          countQuery = countQuery.eq('content_type', mediaType as 'image' | 'video' | 'link');
+        }
+
+        if (platform) {
+          if (platform === 'x') {
+            countQuery = countQuery.or('platform.eq.x,platform.eq.twitter,url.ilike.%x.com%,url.ilike.%twitter.com%');
+          } else {
+            countQuery = countQuery.or(`platform.eq.${platform},url.ilike.%${platform}%`);
+          }
+        }
+
+        if (member) {
+          countQuery = countQuery.eq('submitted_by', member);
+        }
+
+        const dateBounds = getDateBounds(date);
+        if (dateBounds?.gte) {
+          countQuery = countQuery.gte('created_at', dateBounds.gte);
+        }
+        if (dateBounds?.lt) {
+          countQuery = countQuery.lt('created_at', dateBounds.lt);
+        }
+
+        if (debouncedSearch.trim()) {
+          const s = debouncedSearch.trim();
+          countQuery = countQuery.or(`title.ilike.%${s}%,url.ilike.%${s}%,description.ilike.%${s}%`);
+        }
+
+        const { count: totalPosts } = await countQuery;
+        const total = totalPosts || 0;
+        setTotalCount(total);
+        setHasMore((pageIndex + 1) * PAGE_SIZE < total);
+
+        // B. Data Query
         let query = supabase
           .from('links')
           .select('id, board_id, submitted_by, url, platform, content_type, title, description, thumbnail_url, category_id, created_at, updated_at')
           .eq('board_id', board.id);
 
+        if (mediaType) {
+          query = query.eq('content_type', mediaType as 'image' | 'video' | 'link');
+        }
+
         if (platform) {
-          query = query.eq('content_type', platform as 'image' | 'video' | 'link');
+          if (platform === 'x') {
+            query = query.or('platform.eq.x,platform.eq.twitter,url.ilike.%x.com%,url.ilike.%twitter.com%');
+          } else {
+            query = query.or(`platform.eq.${platform},url.ilike.%${platform}%`);
+          }
         }
-        if (category) {
-          query = query.eq('category_id', category);
-        }
+
         if (member) {
           query = query.eq('submitted_by', member);
         }
+
+        if (dateBounds?.gte) {
+          query = query.gte('created_at', dateBounds.gte);
+        }
+        if (dateBounds?.lt) {
+          query = query.lt('created_at', dateBounds.lt);
+        }
+
         if (debouncedSearch.trim()) {
           const s = debouncedSearch.trim();
           query = query.or(`title.ilike.%${s}%,url.ilike.%${s}%,description.ilike.%${s}%`);
         }
 
-        // Sort in PostgreSQL
         if (sort === 'oldest') {
           query = query.order('created_at', { ascending: true });
         } else {
           query = query.order('created_at', { ascending: false });
         }
 
-        // Pagination range
         const from = pageIndex * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
         query = query.range(from, to);
@@ -246,7 +333,6 @@ export default function BoardPage() {
           return;
         }
 
-        // Hydrate submitter profiles and category details
         let enriched: LinkWithDetails[] = [];
         if (rawLinks && rawLinks.length > 0) {
           const submitterIds = Array.from(
@@ -264,7 +350,8 @@ export default function BoardPage() {
 
           enriched = rawLinks.map((l) => {
             const detected = detectPlatform(l.url);
-            const actualPlatform = (l.platform && l.platform !== 'other') ? l.platform : detected.id;
+            const normalized = normalizePlatform(l.platform || detected.id);
+            const actualPlatform = normalized !== 'other' ? normalized : detected.id;
             const fallbackTitle = l.title || `${detected.label} Post`;
             const embedInfo = resolveEmbedInfo(l.url);
             return {
@@ -279,18 +366,53 @@ export default function BoardPage() {
             };
           });
 
-          // Background auto-repair for links with unmigrated platform or missing title/metadata
+          // Background auto-repair for links with unmigrated platform, content_type, or missing title/metadata
           rawLinks.forEach((l) => {
             const detected = detectPlatform(l.url);
-            if ((l.platform === 'other' && detected.id !== 'other') || !l.title) {
+            const normalized = normalizePlatform(l.platform);
+            const isReddit = detected.id === 'reddit';
+            const isKnownVideo =
+              l.content_type === 'video' ||
+              detected.id === 'youtube' ||
+              detected.id === 'tiktok' ||
+              l.url.includes('v.redd.it') ||
+              Boolean(l.url.match(/\.(mp4|webm|mov|m3u8)(\?.*)?$/i)) ||
+              Boolean(l.url.match(/\/(reel|reels|shorts|clip|clips)\//i));
+
+            const needsRepair =
+              normalized !== l.platform ||
+              !l.title ||
+              (isReddit && l.content_type !== 'video') ||
+              (isKnownVideo && l.content_type !== 'video');
+
+            if (needsRepair) {
               fetch(`/api/metadata?url=${encodeURIComponent(l.url)}`)
                 .then((r) => r.json())
                 .then((meta) => {
                   if (meta && meta.title) {
+                    const resolvedType = meta.contentType || (isKnownVideo ? 'video' : l.content_type);
+                    
+                    // Immediately update local React state so UI reflects it without page reload
+                    setLinks((prev) =>
+                      prev.map((item) =>
+                        item.id === l.id
+                          ? {
+                              ...item,
+                              platform: detected.id,
+                              content_type: resolvedType,
+                              title: meta.title,
+                              description: meta.description || item.description,
+                              thumbnail_url: meta.thumbnailUrl || item.thumbnail_url,
+                            }
+                          : item
+                      )
+                    );
+
                     supabase
                       .from('links')
                       .update({
                         platform: detected.id,
+                        content_type: resolvedType,
                         title: meta.title,
                         description: meta.description || null,
                         thumbnail_url: meta.thumbnailUrl || null,
@@ -305,38 +427,36 @@ export default function BoardPage() {
           });
         }
 
-        setHasMore(rawLinks ? rawLinks.length === PAGE_SIZE : false);
-        setPage(pageIndex);
-
         if (append) {
           setLinks((prev) => [...prev, ...enriched]);
         } else {
           setLinks(enriched);
         }
-      } catch (err) {
-        console.error('Feed query error:', err);
+      } catch (err: any) {
+        console.error('Failed to fetch board links:', err);
       } finally {
         setFeedLoading(false);
         setLoadingMore(false);
       }
     },
-    [board, platform, category, member, sort, debouncedSearch, categories, supabase]
+    [board, mediaType, platform, member, date, sort, debouncedSearch, categories, getDateBounds, supabase]
   );
 
-  // Trigger PostgreSQL feed query when filters or search change
+  // Trigger feed reload on filter or board changes
   useEffect(() => {
     if (board) {
-      updateUrlParams(platform, category, member, sort, debouncedSearch);
+      updateUrlParams(mediaType, platform, member, date, sort, search);
+      setPage(0);
       fetchLinks(0, false);
     }
-  }, [board, platform, category, member, sort, debouncedSearch, fetchLinks, updateUrlParams]);
+  }, [board, mediaType, platform, member, date, sort, debouncedSearch, fetchLinks, updateUrlParams]);
 
-  // 5. Supabase Realtime Subscription with Filter Matching (User Adjustment 2)
+  // 5. Supabase Realtime Subscription (postgres_changes)
   useEffect(() => {
     if (!board) return;
 
     const channel = supabase
-      .channel(`board-realtime-${board.id}`)
+      .channel(`board-realtime:${board.id}`)
       .on(
         'postgres_changes',
         {
@@ -347,79 +467,36 @@ export default function BoardPage() {
         },
         async (payload) => {
           const newRow = payload.new as any;
-
-          // Check if new link matches the active filters
-          if (platform && newRow.content_type !== platform) return;
-          if (category && newRow.category_id !== category) return;
-          if (member && newRow.submitted_by !== member) return;
-          if (debouncedSearch.trim()) {
-            const s = debouncedSearch.toLowerCase().trim();
-            const matches =
-              (newRow.title && newRow.title.toLowerCase().includes(s)) ||
-              (newRow.url && newRow.url.toLowerCase().includes(s)) ||
-              (newRow.description && newRow.description.toLowerCase().includes(s));
-            if (!matches) return;
-          }
-
-          // Fetch submitter profile
-          let prof = null;
+          let profile = null;
           if (newRow.submitted_by) {
             const { data: p } = await supabase
               .from('profiles')
               .select('id, username, email')
               .eq('id', newRow.submitted_by)
-              .maybeSingle();
-            prof = p;
+              .single();
+            profile = p;
           }
 
-          const fullLink: LinkWithDetails = {
+          const detected = detectPlatform(newRow.url);
+          const embedInfo = resolveEmbedInfo(newRow.url);
+
+          const enrichedItem: LinkWithDetails = {
             ...newRow,
-            profile: prof,
+            platform: detected.id,
+            title: newRow.title || `${detected.label} Post`,
+            embed_type: embedInfo.embedType,
+            external_id: embedInfo.externalId,
+            resolved_url: embedInfo.permalink || null,
+            profile,
             category: categories.find((c) => c.id === newRow.category_id) || null,
           };
 
-          // Prepend to visible feed only when sorting by newest
+          // If sort is newest, prepend to current links
           if (sort === 'newest') {
-            setLinks((prev) => [fullLink, ...prev]);
-          } else {
-            setLinks((prev) => [...prev, fullLink]);
+            setLinks((prev) => [enrichedItem, ...prev]);
           }
-          showToast('⚡ New link added to board!');
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'links',
-          filter: `board_id=eq.${board.id}`,
-        },
-        (payload) => {
-          setLinks((prev) => prev.filter((l) => l.id !== (payload.old as any).id));
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'links',
-          filter: `board_id=eq.${board.id}`,
-        },
-        (payload) => {
-          const updated = payload.new as any;
-          setLinks((prev) =>
-            prev.map((l) =>
-              l.id === updated.id
-                ? {
-                    ...l,
-                    ...updated,
-                    category: categories.find((c) => c.id === updated.category_id) || null,
-                  }
-                : l
-            )
-          );
+          setTotalCount((prev) => prev + 1);
+          showToast('✨ New post added to this board!');
         }
       )
       .subscribe();
@@ -427,35 +504,42 @@ export default function BoardPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [board, platform, category, member, sort, debouncedSearch, categories, supabase]);
+  }, [board, categories, sort, supabase]);
 
-  // Handlers for Post Actions
+  // Handler: Join Board
   const handleJoinBoard = async () => {
+    if (!board) return;
     if (!currentUser) {
-      router.push('/#auth');
+      showToast('Please sign in to join this board');
       return;
     }
-    if (!board) return;
 
     try {
       const { error } = await supabase.from('board_members').insert({
         board_id: board.id,
         user_id: currentUser.id,
-        role: 'member',
       });
 
-      if (error && error.code !== '23505') throw error;
+      if (error) {
+        if (error.code === '23505') {
+          setIsMember(true);
+          showToast('You are already a member of this board!');
+          return;
+        }
+        throw error;
+      }
 
       setIsMember(true);
-      setMemberCount((c) => c + 1);
-      showToast(`🎉 Joined "${board.name}"!`);
-    } catch {
-      showToast('Error joining board');
+      setMemberCount((prev) => prev + 1);
+      showToast('🎉 Successfully joined board!');
+    } catch (err: any) {
+      showToast(err.message || 'Error joining board');
     }
   };
 
+  // Handler: Delete Post
   const handleDeletePost = async (linkId: string) => {
-    if (!confirm('Are you sure you want to delete this link?')) return;
+    if (!confirm('Are you sure you want to remove this post?')) return;
 
     try {
       const res = await fetch(`/api/links/${linkId}`, {
@@ -468,6 +552,7 @@ export default function BoardPage() {
       }
 
       setLinks((prev) => prev.filter((l) => l.id !== linkId));
+      setTotalCount((prev) => Math.max(0, prev - 1));
       showToast('🗑 Post deleted');
     } catch (err: any) {
       showToast(err.message || 'Error deleting post');
@@ -478,157 +563,193 @@ export default function BoardPage() {
     setLinks((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
   };
 
+  const handleClearAllFilters = () => {
+    setMediaType('');
+    setPlatform('');
+    setMember('');
+    setDate('');
+    setSort('newest');
+    setSearch('');
+    setPage(0);
+  };
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchLinks(nextPage, true);
+  };
+
+  const isFiltered = Boolean(mediaType || platform || member || date || debouncedSearch || sort !== 'newest');
+
+  // Next / Previous Navigation for PreviewModal
+  const currentPreviewIndex = previewLink ? links.findIndex((l) => l.id === previewLink.id) : -1;
+  const hasNext = currentPreviewIndex >= 0 && currentPreviewIndex < links.length - 1;
+  const hasPrevious = currentPreviewIndex > 0;
+  const handleNext = () => {
+    if (hasNext) setPreviewLink(links[currentPreviewIndex + 1]);
+  };
+  const handlePrevious = () => {
+    if (hasPrevious) setPreviewLink(links[currentPreviewIndex - 1]);
+  };
+
+  // Format members for sidebar
+  const sidebarMembers: SidebarMember[] = members.map((m) => ({
+    id: m.id,
+    username: m.name.replace(/^@/, ''),
+  }));
+
   if (boardLoading) {
     return (
-      <div className="container" style={{ paddingTop: '7rem', paddingBottom: '6rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
-          {[...Array(6)].map((_, i) => (
-            <SkeletonCard key={i} />
+      <WorkspaceLayout activeSlug={slug} activeBoardName={board?.name} boardMembers={sidebarMembers}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-3.5">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+            <div
+              key={i}
+              className="flex flex-col bg-surface rounded-xl border border-border-subtle overflow-hidden h-[240px]"
+            >
+              <div className="w-full aspect-[16/10] bg-surface-elevated animate-pulse border-b border-border-subtle/80" />
+              <div className="p-2.5 flex flex-col gap-1.5 flex-1">
+                <div className="h-3.5 w-3/4 bg-surface-elevated rounded animate-pulse" />
+                <div className="h-3 w-1/2 bg-surface-elevated rounded animate-pulse" />
+                <div className="mt-auto flex items-center justify-between pt-1.5 border-t border-border-subtle/40">
+                  <div className="w-14 h-2.5 bg-surface-elevated rounded animate-pulse" />
+                  <div className="w-3.5 h-3.5 bg-surface-elevated rounded animate-pulse" />
+                </div>
+              </div>
+            </div>
           ))}
         </div>
-      </div>
+      </WorkspaceLayout>
     );
   }
 
   if (boardError || !board) {
     return (
-      <div className="container" style={{ paddingTop: '7rem', paddingBottom: '6rem', textAlign: 'center' }}>
-        <div className="card" style={{ maxWidth: '460px', margin: '0 auto', padding: '3rem 2rem' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔍</div>
-          <h2>Board Not Found</h2>
-          <p className="text-secondary" style={{ margin: '1rem 0 1.5rem' }}>
+      <WorkspaceLayout activeSlug={slug}>
+        <div className="w-full py-20 px-4 flex flex-col items-center justify-center text-center">
+          <div className="w-16 h-16 rounded-3xl bg-surface border border-border-subtle flex items-center justify-center text-3xl mb-4 shadow-sm">
+            🔍
+          </div>
+          <h2 className="text-2xl font-extrabold text-text-primary tracking-tight mb-2">
+            Board Not Found
+          </h2>
+          <p className="text-sm text-text-secondary max-w-sm mb-6">
             {boardError || 'This board does not exist or has been removed.'}
           </p>
-          <Link href="/boards" className="btn btn-primary">
+          <Link
+            href="/boards"
+            className="px-6 py-2.5 rounded-xl bg-primary text-white font-extrabold text-xs shadow-xs hover:opacity-90 active:scale-95 transition-all"
+          >
             Go to Your Boards
           </Link>
         </div>
-      </div>
+      </WorkspaceLayout>
     );
   }
 
   return (
-    <div className="container pt-28" style={{ paddingBottom: '6rem' }}>
+    <WorkspaceLayout activeSlug={slug} activeBoardName={board?.name} boardMembers={sidebarMembers}>
       {/* Toast Notification */}
       {toast && (
-        <div className="toast-container">
-          <div className="toast">{toast}</div>
+        <div className="fixed bottom-6 right-6 z-50 animate-fade-in pointer-events-none">
+          <div className="px-4 py-3 rounded-2xl bg-surface border border-border-subtle text-text-primary text-xs font-bold shadow-xl flex items-center gap-2">
+            <span>{toast}</span>
+          </div>
         </div>
       )}
 
-      {/* 1. Header Component */}
+      {/* 1. Compressed Header Component with Board Identity & Board Actions */}
       <BoardHeader
         boardName={board.name}
         boardSlug={board.slug}
         memberCount={memberCount}
+        postCount={totalCount || links.length}
         isMember={isMember}
-        searchQuery={search}
-        onSearchChange={setSearch}
+        creatorName={board.owner_username}
         onJoinBoard={handleJoinBoard}
         onOpenAddModal={() => setShowAddModal(true)}
+        onOpenShareModal={() => setShowShareModal(true)}
         onToast={showToast}
       />
 
-      {/* 2. Composable Filter Bar */}
-      <FilterBar
+      {/* 2. Final Toolbar: All/Images/Videos + Platform/Member/Date/Sort Dropdowns */}
+      <BoardToolbar
+        selectedMediaType={mediaType}
         selectedPlatform={platform}
-        selectedCategory={category}
         selectedMember={member}
+        selectedDate={date}
         selectedSort={sort}
-        categories={categories}
         members={members}
-        onPlatformChange={setPlatform}
-        onCategoryChange={setCategory}
-        onMemberChange={setMember}
-        onSortChange={setSort}
-        totalCount={links.length}
+        searchQuery={search}
+        onMediaTypeChange={(t) => {
+          setMediaType(t);
+        }}
+        onPlatformChange={(p) => {
+          setPlatform(p);
+        }}
+        onMemberChange={(m) => {
+          setMember(m);
+        }}
+        onDateChange={(d) => {
+          setDate(d);
+        }}
+        onSortChange={(s) => {
+          setSort(s);
+        }}
+        onSearchChange={setSearch}
+        onClearAllFilters={handleClearAllFilters}
       />
 
-      {/* 3. Feed Cards Grid */}
+      {/* 3. Post Grid or Empty / Filter-Empty State */}
       {feedLoading ? (
-        <div className="v2-card-grid">
-          {[...Array(6)].map((_, i) => (
-            <SkeletonCard key={i} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-3.5">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
+            <div
+              key={i}
+              className="flex flex-col bg-surface rounded-xl border border-border-subtle overflow-hidden h-[240px]"
+            >
+              <div className="w-full aspect-[16/10] bg-surface-elevated animate-pulse border-b border-border-subtle/80" />
+              <div className="p-2.5 flex flex-col gap-1.5 flex-1">
+                <div className="h-3.5 w-3/4 bg-surface-elevated rounded animate-pulse" />
+                <div className="h-3 w-1/2 bg-surface-elevated rounded animate-pulse" />
+                <div className="mt-auto flex items-center justify-between pt-1.5 border-t border-border-subtle/40">
+                  <div className="w-14 h-2.5 bg-surface-elevated rounded animate-pulse" />
+                  <div className="w-3.5 h-3.5 bg-surface-elevated rounded animate-pulse" />
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       ) : links.length === 0 ? (
-        <div className="card empty-state" style={{ marginTop: '2rem' }}>
-          <div className="empty-state-icon">📥</div>
-          {debouncedSearch || platform || category || member ? (
-            <>
-              <h3>No matching links found</h3>
-              <p style={{ maxWidth: '440px', margin: '0.5rem auto 1.5rem', color: 'var(--color-text-secondary)' }}>
-                Try adjusting your search terms or clearing some of the filters above.
-              </p>
-              <button
-                onClick={() => {
-                  setPlatform('');
-                  setCategory('');
-                  setMember('');
-                  setSearch('');
-                }}
-                className="btn btn-secondary btn-sm"
-              >
-                Clear All Filters
-              </button>
-            </>
-          ) : (
-            <>
-              <h3>Nothing here yet</h3>
-              <p style={{ maxWidth: '440px', margin: '0.5rem auto 1.5rem', color: 'var(--color-text-secondary)' }}>
-                Send a link to the Telegram bot or tap + Add Link above and it will appear here.
-              </p>
-              <div style={{ display: 'inline-flex', gap: '0.75rem' }}>
-                <a
-                  href="https://t.me/memeboard_bot"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-telegram btn-sm"
-                >
-                  Open @memeboard_bot ↗
-                </a>
-              </div>
-            </>
-          )}
-        </div>
+        <EmptyBoard
+          onAddClick={() => setShowAddModal(true)}
+          isFiltered={isFiltered}
+          onClearFilters={handleClearAllFilters}
+        />
       ) : (
-        <>
-          <div className="v2-card-grid">
-            {links.map((item) => (
-              <FeedCard
-                key={item.id}
-                link={item}
-                currentUserId={currentUser?.id}
-                isBoardOwner={isOwner}
-                onOpenPreview={(l) => setPreviewLink(l)}
-                onEditPost={(l) => setEditingLink(l)}
-                onDeletePost={handleDeletePost}
-                onToast={showToast}
-              />
-            ))}
-          </div>
-
-          {/* Pagination / Load More */}
-          {hasMore && (
-            <div style={{ textAlign: 'center', marginTop: '3rem' }}>
-              <button
-                onClick={() => fetchLinks(page + 1, true)}
-                disabled={loadingMore}
-                className="btn btn-secondary btn-lg"
-                id="load-more-btn"
-              >
-                {loadingMore ? 'Loading more...' : 'Load More Posts ↓'}
-              </button>
-            </div>
-          )}
-        </>
+        <PostGrid
+          links={links}
+          currentUserId={currentUser?.id}
+          isBoardOwner={isOwner}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          onLoadMore={handleLoadMore}
+          onOpenPreview={(l) => setPreviewLink(l)}
+          onEditPost={(l) => setEditingLink(l)}
+          onDeletePost={handleDeletePost}
+          onToast={showToast}
+        />
       )}
 
-      {/* Inline Preview Modal / Drawer */}
+      {/* Full-Screen Media Preview Modal with Next/Previous Navigation */}
       <PreviewModal
         link={previewLink}
         onClose={() => setPreviewLink(null)}
         onToast={showToast}
+        hasNext={hasNext}
+        hasPrevious={hasPrevious}
+        onNext={handleNext}
+        onPrevious={handlePrevious}
       />
 
       {/* Edit Post Modal */}
@@ -640,17 +761,26 @@ export default function BoardPage() {
         onToast={showToast}
       />
 
-      {/* Quick Add Modal */}
-      {showAddModal && (
-        <QuickAddModal
-          boardId={board.id}
-          categories={categories}
-          currentUserId={currentUser?.id}
-          onClose={() => setShowAddModal(false)}
-          onAdded={() => fetchLinks(0, false)}
-          onToast={showToast}
-        />
-      )}
-    </div>
+      {/* Add Link Modal */}
+      <AddLinkModal
+        isOpen={showAddModal}
+        boardId={board.id}
+        boardName={board.name}
+        categories={categories}
+        currentUserId={currentUser?.id}
+        onClose={() => setShowAddModal(false)}
+        onAdded={() => fetchLinks(0, false)}
+        onToast={showToast}
+      />
+
+      {/* Share Board Modal */}
+      <ShareBoardModal
+        isOpen={showShareModal}
+        boardName={board.name}
+        boardSlug={board.slug}
+        onClose={() => setShowShareModal(false)}
+        onToast={showToast}
+      />
+    </WorkspaceLayout>
   );
 }

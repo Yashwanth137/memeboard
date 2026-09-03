@@ -159,6 +159,9 @@ export interface Database {
           description: string | null;
           thumbnail_url: string | null;
           category_id: string | null;
+          embed_type: string | null;
+          external_id: string | null;
+          resolved_url: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -173,6 +176,9 @@ export interface Database {
           description?: string | null;
           thumbnail_url?: string | null;
           category_id?: string | null;
+          embed_type?: string | null;
+          external_id?: string | null;
+          resolved_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -187,6 +193,9 @@ export interface Database {
           description?: string | null;
           thumbnail_url?: string | null;
           category_id?: string | null;
+          embed_type?: string | null;
+          external_id?: string | null;
+          resolved_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -214,9 +223,78 @@ export interface Database {
           }
         ];
       };
+      board_invites: {
+        Row: {
+          id: string;
+          board_id: string;
+          token_hash: string;
+          created_by: string | null;
+          expires_at: string | null;
+          max_uses: number | null;
+          uses_count: number;
+          is_revoked: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          board_id: string;
+          token_hash: string;
+          created_by?: string | null;
+          expires_at?: string | null;
+          max_uses?: number | null;
+          uses_count?: number;
+          is_revoked?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          board_id?: string;
+          token_hash?: string;
+          created_by?: string | null;
+          expires_at?: string | null;
+          max_uses?: number | null;
+          uses_count?: number;
+          is_revoked?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'board_invites_board_id_fkey';
+            columns: ['board_id'];
+            isOneToOne: false;
+            referencedRelation: 'boards';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      rate_limits: {
+        Row: {
+          key: string;
+          count: number;
+          reset_at: string;
+        };
+        Insert: {
+          key: string;
+          count?: number;
+          reset_at: string;
+        };
+        Update: {
+          key?: string;
+          count?: number;
+          reset_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
-      [_ in never]: never;
+      public_profiles: {
+        Row: {
+          id: string;
+          username: string | null;
+          created_at: string;
+        };
+        Relationships: [];
+      };
     };
     Functions: {
       link_telegram_account: {
@@ -247,13 +325,11 @@ export interface Database {
   };
 }
 
+export type Board = Database['public']['Tables']['boards']['Row'];
 export type Category = Database['public']['Tables']['categories']['Row'];
 export type LinkRow = Database['public']['Tables']['links']['Row'];
 
 export interface LinkWithDetails extends LinkRow {
-  embed_type?: string | null;
-  external_id?: string | null;
-  resolved_url?: string | null;
   profile?: {
     id?: string;
     username: string | null;

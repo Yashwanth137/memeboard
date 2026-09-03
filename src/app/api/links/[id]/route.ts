@@ -1,14 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { verifyMutationOrigin } from '@/lib/security/csrf';
+import { rateLimit } from '@/lib/security/rate-limit';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 1. CSRF / Origin Verification
+    const originCheck = verifyMutationOrigin(req);
+    if (!originCheck.valid) {
+      return originCheck.response!;
+    }
+
     const { id: linkId } = await params;
     const supabase = await createClient();
 
+    // 2. Authentication Check
     const {
       data: { user },
       error: authError,
@@ -18,13 +27,33 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // 3. Rate Limiting Check
+    const rl = await rateLimit(`link-edit:${user.id}`, 30, 60);
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded: Too many edit requests' },
+        { status: 429 }
+      );
+    }
+
     const body = await req.json();
     const { title, category_id } = body;
 
-    // Verify ownership
+    // 4. Input Validation
+    if (title !== undefined && typeof title !== 'string') {
+      return NextResponse.json({ error: 'Invalid title format' }, { status: 400 });
+    }
+    if (typeof title === 'string' && title.trim().length > 250) {
+      return NextResponse.json({ error: 'Title cannot exceed 250 characters' }, { status: 400 });
+    }
+    if (category_id !== undefined && category_id !== null && typeof category_id !== 'string') {
+      return NextResponse.json({ error: 'Invalid category format' }, { status: 400 });
+    }
+
+    // 5. Verify ownership / board membership
     const { data: link, error: fetchErr } = await supabase
       .from('links')
-      .select('id, submitted_by')
+      .select('id, submitted_by, board_id, boards(owner_id)')
       .eq('id', linkId)
       .single();
 
@@ -32,7 +61,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Link not found' }, { status: 404 });
     }
 
-    if (link.submitted_by !== user.id) {
+    const isAuthor = link.submitted_by === user.id;
+    const isBoardOwner = (link.boards as any)?.owner_id === user.id;
+
+    if (!isAuthor && !isBoardOwner) {
       return NextResponse.json(
         { error: 'Forbidden: You can only edit your own posts' },
         { status: 403 }
@@ -67,13 +99,20 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // 1. CSRF / Origin Verification
+    const originCheck = verifyMutationOrigin(req);
+    if (!originCheck.valid) {
+      return originCheck.response!;
+    }
+
     const { id: linkId } = await params;
     const supabase = await createClient();
 
+    // 2. Authentication Check
     const {
       data: { user },
       error: authError,
@@ -83,7 +122,16 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Check if user is submitter or board owner
+    // 3. Rate Limiting Check
+    const rl = await rateLimit(`link-del:${user.id}`, 30, 60);
+    if (!rl.success) {
+      return NextResponse.json(
+        { error: 'Rate limit exceeded: Too many delete requests' },
+        { status: 429 }
+      );
+    }
+
+    // 4. Check if user is submitter or board owner
     const { data: link, error: fetchErr } = await supabase
       .from('links')
       .select('id, submitted_by, board_id, boards(owner_id)')

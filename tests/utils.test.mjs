@@ -30,7 +30,7 @@ function detectPlatform(rawUrl) {
     if (host === 'instagr.am' || host.endsWith('instagram.com')) {
       return 'instagram';
     }
-    if (host === 'redd.it' || host.endsWith('reddit.com')) {
+    if (host === 'redd.it' || host.endsWith('.redd.it') || host.endsWith('reddit.com')) {
       return 'reddit';
     }
     if (host === 'x.com' || host.endsWith('twitter.com')) {
@@ -145,6 +145,7 @@ test('detectPlatform accurately detects platforms with domain variations', () =>
   assert.strictEqual(detectPlatform('https://instagram.com/reel/123'), 'instagram');
   assert.strictEqual(detectPlatform('https://www.reddit.com/r/technology/123'), 'reddit');
   assert.strictEqual(detectPlatform('https://redd.it/xyz'), 'reddit');
+  assert.strictEqual(detectPlatform('https://v.redd.it/3nvhvn1kebnh1'), 'reddit');
   assert.strictEqual(detectPlatform('https://x.com/jack/status/20'), 'x');
   assert.strictEqual(detectPlatform('https://twitter.com/memes/status/123'), 'x');
   assert.strictEqual(detectPlatform('https://github.com/torvalds/linux'), 'other');

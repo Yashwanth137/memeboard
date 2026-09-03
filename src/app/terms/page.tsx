@@ -6,14 +6,14 @@ export const metadata = {
 
 export default function TermsPage() {
   return (
-    <div className="min-h-screen bg-bg-cream bg-noise text-text-dark">
+    <div className="min-h-screen bg-page bg-noise text-text-primary">
       <div className="mx-auto w-full max-w-3xl px-6 pt-32 pb-20 md:px-8">
         
         {/* Navigation */}
         <div className="mb-10">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-door-purple transition-colors hover:text-door-purple-dark"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-primary transition-opacity hover:opacity-80"
           >
             ← Back to Memeboard
           </Link>
@@ -21,17 +21,17 @@ export default function TermsPage() {
 
         {/* Content */}
         <article>
-          <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl text-text-dark">
+          <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl text-text-primary">
             Terms of Service
           </h1>
 
-          <p className="mt-3 text-sm font-medium text-text-muted">
+          <p className="mt-3 text-sm font-medium text-text-secondary">
             Last updated: September 2026
           </p>
 
-          <div className="mt-10 space-y-8 text-base leading-relaxed text-text-muted">
+          <div className="mt-10 space-y-8 text-base leading-relaxed text-text-secondary">
             <section>
-              <h2 className="text-xl font-bold tracking-tight text-text-dark">
+              <h2 className="text-xl font-bold tracking-tight text-text-primary">
                 1. Usage Agreement
               </h2>
               <p className="mt-2.5">
@@ -40,7 +40,7 @@ export default function TermsPage() {
             </section>
 
             <section>
-              <h2 className="text-xl font-bold tracking-tight text-text-dark">
+              <h2 className="text-xl font-bold tracking-tight text-text-primary">
                 2. Content Ownership
               </h2>
               <p className="mt-2.5">

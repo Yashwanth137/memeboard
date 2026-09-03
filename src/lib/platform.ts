@@ -1,4 +1,4 @@
-export type PlatformId = 'instagram' | 'youtube' | 'reddit' | 'x' | 'other';
+export type PlatformId = 'x' | 'reddit' | 'youtube' | 'instagram' | 'tiktok' | 'facebook' | 'other';
 export type EmbedType = 'youtube' | 'x' | 'reddit' | 'instagram' | 'card';
 
 export interface PlatformInfo {
@@ -17,13 +17,30 @@ export interface EmbedDetails {
 }
 
 export const PLATFORMS_FILTER_LIST: { id: 'all' | PlatformId; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'instagram', label: 'Instagram' },
-  { id: 'youtube', label: 'YouTube' },
-  { id: 'reddit', label: 'Reddit' },
+  { id: 'all', label: 'All Platforms' },
   { id: 'x', label: 'X' },
-  { id: 'other', label: 'Other' },
+  { id: 'reddit', label: 'Reddit' },
+  { id: 'youtube', label: 'YouTube' },
+  { id: 'instagram', label: 'Instagram' },
+  { id: 'tiktok', label: 'TikTok' },
+  { id: 'facebook', label: 'Facebook' },
 ];
+
+/**
+ * Normalizes platform strings centrally so legacy 'twitter', capitalized names, etc.
+ * always resolve to standard normalized identifiers ('x', 'youtube', 'reddit', etc.).
+ */
+export function normalizePlatform(raw: string | null | undefined): PlatformId {
+  if (!raw) return 'other';
+  const val = raw.toLowerCase().trim();
+  if (val === 'twitter' || val === 'x' || val === 't.co') return 'x';
+  if (val === 'youtube' || val === 'yt' || val === 'youtu.be') return 'youtube';
+  if (val === 'reddit' || val === 'redd.it' || val === 'v.redd.it' || val.endsWith('.redd.it')) return 'reddit';
+  if (val === 'instagram' || val === 'instagr.am' || val === 'ig') return 'instagram';
+  if (val === 'tiktok') return 'tiktok';
+  if (val === 'facebook' || val === 'fb') return 'facebook';
+  return 'other';
+}
 
 /**
  * Extracts YouTube video or Shorts ID (11 chars).
@@ -175,7 +192,7 @@ export function detectPlatform(rawUrl: string): PlatformInfo {
     }
 
     // 3. Reddit
-    if (host === 'redd.it' || host.endsWith('reddit.com')) {
+    if (host === 'redd.it' || host.endsWith('.redd.it') || host.endsWith('reddit.com')) {
       return {
         id: 'reddit',
         label: 'Reddit',
@@ -186,13 +203,35 @@ export function detectPlatform(rawUrl: string): PlatformInfo {
     }
 
     // 4. X / Twitter
-    if (host === 'x.com' || host.endsWith('twitter.com')) {
+    if (host === 'x.com' || host === 't.co' || host.endsWith('.x.com') || host.endsWith('twitter.com')) {
       return {
         id: 'x',
         label: 'X',
         domain: host,
         accentColor: '#1d9bf0',
         badgeBg: 'rgba(29, 155, 240, 0.12)',
+      };
+    }
+
+    // 5. TikTok
+    if (host === 'tiktok.com' || host.endsWith('.tiktok.com')) {
+      return {
+        id: 'tiktok',
+        label: 'TikTok',
+        domain: host,
+        accentColor: '#00f2fe',
+        badgeBg: 'rgba(0, 242, 254, 0.12)',
+      };
+    }
+
+    // 6. Facebook
+    if (host === 'facebook.com' || host.endsWith('.facebook.com') || host === 'fb.watch' || host === 'fb.com') {
+      return {
+        id: 'facebook',
+        label: 'Facebook',
+        domain: host,
+        accentColor: '#1877f2',
+        badgeBg: 'rgba(24, 119, 242, 0.12)',
       };
     }
 

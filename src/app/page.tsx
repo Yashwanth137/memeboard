@@ -52,7 +52,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f5f0e4] text-text-dark bg-noise hero relative overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-page text-text-primary bg-noise relative overflow-hidden">
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 pt-28 md:pt-32 pb-8 md:pb-16 grid grid-cols-1 md:grid-cols-2 place-items-center gap-8 md:gap-12 relative z-10">
@@ -72,24 +72,24 @@ export default function HomePage() {
           </div> */}
 
           {/* Headline */}
-          <h1 className="text-5xl md:text-6xl lg:text-[4.5rem] font-extrabold tracking-tight mb-6 leading-[1.1] text-text-dark">
+          <h1 className="text-5xl md:text-6xl lg:text-[4.5rem] font-extrabold tracking-tight mb-6 leading-[1.1] text-text-primary">
             Where friend group <br className="hidden md:block" />
             <span className="bg-gradient-to-r from-door-purple via-pink-500 to-gold-glow bg-clip-text text-transparent">links live forever.</span>
           </h1>
 
           {/* Subtitle */}
-          <p className="text-lg md:text-xl text-text-muted max-w-2xl md:max-w-md mb-12 leading-relaxed font-medium">
+          <p className="text-lg md:text-xl text-text-secondary max-w-2xl md:max-w-md mb-12 leading-relaxed font-medium">
             Stop losing memes, reels, YouTube videos, and Reddit posts in chat history.
             Share them with our Agent and they instantly organize on your group's shared Board.
           </p>
 
           {/* Input Bar */}
           <div className="w-full max-w-md">
-            <form onSubmit={handleEnterBoard} className="relative flex items-center shadow-[0_8px_30px_rgba(0,0,0,0.08)] rounded-2xl group transition-all duration-300 focus-within:shadow-[0_8px_40px_rgba(76,29,149,0.15)] bg-white">
-              <Link2 className="absolute left-5 w-5 h-5 text-slate-400 group-focus-within:text-door-purple transition-colors" />
+            <form onSubmit={handleEnterBoard} className="relative flex items-center shadow-[0_8px_30px_rgba(0,0,0,0.08)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.4)] rounded-2xl group transition-all duration-300 focus-within:shadow-[0_8px_40px_rgba(76,29,149,0.15)] bg-surface">
+              <Link2 className="absolute left-5 w-5 h-5 text-text-secondary/60 group-focus-within:text-primary transition-colors" />
               <input
                 type="text"
-                className="w-full h-16 pl-14 pr-36 bg-transparent border-2 border-transparent rounded-2xl text-text-dark placeholder-slate-400 focus:outline-none focus:border-door-purple/20 transition-all font-medium text-lg"
+                className="w-full h-16 pl-14 pr-36 bg-transparent border-2 border-transparent rounded-2xl text-text-primary placeholder-text-secondary/50 focus:outline-none focus:border-primary/20 transition-all font-medium text-lg"
                 placeholder="Enter a board link or invite"
                 value={inviteLink}
                 onChange={(e) => setInviteLink(e.target.value)}
@@ -98,7 +98,7 @@ export default function HomePage() {
               <button
                 type="submit"
                 disabled={isEntering || !inviteLink.trim()}
-                className="absolute right-2 top-2 bottom-2 px-6 bg-door-purple hover:bg-door-purple-light text-white font-bold rounded-xl flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                className="absolute right-2 top-2 bottom-2 px-6 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
               >
                 Enter <ArrowRight className="w-4 h-4" />
               </button>
@@ -112,14 +112,14 @@ export default function HomePage() {
 
             <div className="mt-8 flex items-center justify-center md:justify-start gap-4">
               <div className="h-px bg-border-subtle flex-1 max-w-[60px]" />
-              <span className="text-slate-400 font-medium text-sm">or</span>
+              <span className="text-text-secondary/60 font-medium text-sm">or</span>
               <div className="h-px bg-border-subtle flex-1 max-w-[60px]" />
             </div>
 
             <div className="mt-6 text-center md:text-left">
               <Link
                 href={user ? "/boards" : "/login?redirect=/boards"}
-                className="inline-flex items-center justify-center h-12 px-8 rounded-xl bg-white border-2 border-door-purple/10 text-door-purple font-bold hover:bg-door-purple/5 hover:border-door-purple/30 transition-all shadow-sm"
+                className="inline-flex items-center justify-center h-12 px-8 rounded-xl bg-surface border-2 border-primary/10 text-primary font-bold hover:bg-primary/5 hover:border-primary/30 transition-all shadow-sm"
               >
                 + Create a new Board
               </Link>
@@ -160,8 +160,8 @@ export default function HomePage() {
               Collect.<br />Share.<br />Remember.
             </p>
             <div className="flex gap-2">
-              <Zap className="w-4 h-4 text-door-purple-light" />
-              <Zap className="w-4 h-4 text-gold-glow" />
+              <Zap className="w-4 h-4 text-primary" />
+              <Zap className="w-4 h-4 text-accent" />
             </div>
           </motion.div>
 
@@ -169,20 +169,20 @@ export default function HomePage() {
       </main>
 
       {/* Footer */}
-      <footer className="relative z-10 py-8 text-center text-text-muted text-sm font-medium border-t border-border-subtle/50 bg-white/30 backdrop-blur-sm mt-auto">
+      <footer className="relative z-10 py-8 text-center text-text-secondary text-sm font-medium border-t border-border-subtle bg-surface/30 backdrop-blur-sm mt-auto">
         <div className="flex flex-wrap items-center justify-center gap-6 mb-4">
-          <div className="flex items-center gap-2 text-text-dark font-extrabold tracking-tight">
-            <Zap className="w-4 h-4 text-door-purple" />
+          <div className="flex items-center gap-2 text-text-primary font-extrabold tracking-tight">
+            <Zap className="w-4 h-4 text-primary" />
             MEMEBOARD
           </div>
-          <span className="w-1 h-1 rounded-full bg-slate-300" />
-          <Link href="/privacy" className="hover:text-text-dark transition-colors">Privacy</Link>
-          <span className="w-1 h-1 rounded-full bg-slate-300" />
-          <Link href="/terms" className="hover:text-text-dark transition-colors">Terms</Link>
-          <span className="w-1 h-1 rounded-full bg-slate-300" />
-          <a href="https://github.com/Yashwanth137/memeboard" target="_blank" rel="noopener noreferrer" className="hover:text-text-dark transition-colors">GitHub</a>
+          <span className="w-1 h-1 rounded-full bg-border-subtle" />
+          <Link href="/privacy" className="hover:text-text-primary transition-colors">Privacy</Link>
+          <span className="w-1 h-1 rounded-full bg-border-subtle" />
+          <Link href="/terms" className="hover:text-text-primary transition-colors">Terms</Link>
+          <span className="w-1 h-1 rounded-full bg-border-subtle" />
+          <a href="https://github.com/Yashwanth137/memeboard" target="_blank" rel="noopener noreferrer" className="hover:text-text-primary transition-colors">GitHub</a>
         </div>
-        <p className="text-slate-400">© 2026 Memeboard. All rights reserved.</p>
+        <p className="text-text-secondary/60">© 2026 Memeboard. All rights reserved.</p>
       </footer>
     </div>
   );

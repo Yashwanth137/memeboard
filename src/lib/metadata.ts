@@ -1,5 +1,3 @@
-import dns from 'dns/promises';
-import net from 'net';
 import {
   detectPlatform,
   extractYouTubeVideoId,
@@ -9,6 +7,9 @@ import {
   EmbedType,
 } from './platform';
 import { createAdminClient } from './supabase/admin';
+import { isPrivateOrReservedIp, validateSafeUrl, safeFetch } from './security/ssrf';
+
+export { isPrivateOrReservedIp, validateSafeUrl };
 
 export interface ExtractedMetadata {
   title: string;
@@ -19,94 +20,6 @@ export interface ExtractedMetadata {
   embedType: EmbedType;
   externalId: string | null;
   resolvedUrl: string | null;
-}
-
-/**
- * Checks whether an IP address belongs to a private, loopback, link-local,
- * or non-routable range to prevent Server-Side Request Forgery (SSRF).
- */
-export function isPrivateOrReservedIp(ip: string): boolean {
-  if (!net.isIP(ip)) return true;
-
-  if (net.isIPv4(ip)) {
-    const parts = ip.split('.').map(Number);
-    // 0.0.0.0/8 (Current network)
-    if (parts[0] === 0) return true;
-    // 10.0.0.0/8 (Private)
-    if (parts[0] === 10) return true;
-    // 127.0.0.0/8 (Loopback)
-    if (parts[0] === 127) return true;
-    // 169.254.0.0/16 (Link-local / AWS metadata 169.254.169.254)
-    if (parts[0] === 169 && parts[1] === 254) return true;
-    // 172.16.0.0/12 (Private)
-    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-    // 192.168.0.0/16 (Private)
-    if (parts[0] === 192 && parts[1] === 168) return true;
-    // 224.0.0.0/4 (Multicast) & 240.0.0.0/4 (Reserved)
-    if (parts[0] >= 224) return true;
-    // 255.255.255.255 (Broadcast)
-    if (ip === '255.255.255.255') return true;
-
-    return false;
-  }
-
-  if (net.isIPv6(ip)) {
-    const lower = ip.toLowerCase();
-    // Loopback ::1
-    if (lower === '::1' || lower === '0:0:0:0:0:0:0:1') return true;
-    // Unspecified ::
-    if (lower === '::' || lower === '0:0:0:0:0:0:0:0') return true;
-    // Unique local address fc00::/7
-    if (lower.startsWith('fc') || lower.startsWith('fd')) return true;
-    // Link-local unicast fe80::/10
-    if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) return true;
-
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * Validates a target URL against SSRF vulnerabilities before fetching.
- */
-export async function validateSafeUrl(rawUrl: string): Promise<URL | null> {
-  try {
-    const parsed = new URL(rawUrl);
-
-    // 1. Only allow http and https
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return null;
-    }
-
-    const hostname = parsed.hostname.toLowerCase();
-
-    // 2. Reject obvious localhost / internal hostnames
-    if (
-      hostname === 'localhost' ||
-      hostname.endsWith('.localhost') ||
-      hostname.endsWith('.local') ||
-      hostname.endsWith('.internal')
-    ) {
-      return null;
-    }
-
-    // 3. If hostname is a direct IP address, test it
-    if (net.isIP(hostname)) {
-      if (isPrivateOrReservedIp(hostname)) return null;
-      return parsed;
-    }
-
-    // 4. Resolve DNS to inspect the underlying IP address
-    const lookup = await dns.lookup(hostname);
-    if (isPrivateOrReservedIp(lookup.address)) {
-      return null;
-    }
-
-    return parsed;
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -132,77 +45,91 @@ function cleanHtmlString(str: string | null | undefined): string | null {
  *   Phase 3: Merge — best of both sources
  */
 export async function extractMetadata(rawUrl: string): Promise<ExtractedMetadata> {
-  let targetUrl = rawUrl;
-  let resolvedUrl: string | null = null;
-
-  // Follow redirects for pic.twitter.com media URLs
-  if (rawUrl.includes('pic.twitter.com')) {
-    try {
-      const res = await fetch(rawUrl, {
-        method: 'HEAD',
-        redirect: 'follow',
-        signal: AbortSignal.timeout(3500),
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
-      });
-      if (res.url && (res.url.includes('/status/') || res.url.includes('/statuses/'))) {
-        targetUrl = res.url;
-        resolvedUrl = res.url;
-      }
-    } catch {}
-  }
-
-  // Follow redirects for Reddit /s/ shortlinks
-  if (targetUrl.includes('reddit.com') && targetUrl.includes('/s/')) {
-    try {
-      const res = await fetch(targetUrl, {
-        method: 'HEAD',
-        redirect: 'follow',
-        signal: AbortSignal.timeout(3500),
-        headers: { 'User-Agent': 'Mozilla/5.0 (MemeboardBot/2.0)' },
-      });
-      if (res.url && res.url.includes('/comments/')) {
-        targetUrl = res.url;
-        resolvedUrl = res.url;
-      }
-    } catch {}
-  }
-
-  const platform = detectPlatform(targetUrl);
-  const fallbackTitle = `${platform.label} Link`;
+  const initialValid = await validateSafeUrl(rawUrl);
+  let platform = detectPlatform(rawUrl);
+  let fallbackTitle = `${platform.label} Link`;
 
   // Compute embed details
   let embedType: EmbedType = 'card';
   let externalId: string | null = null;
 
   if (platform.id === 'youtube') {
-    externalId = extractYouTubeVideoId(targetUrl);
+    externalId = extractYouTubeVideoId(rawUrl);
     embedType = externalId ? 'youtube' : 'card';
   } else if (platform.id === 'x') {
-    externalId = extractXStatusId(targetUrl);
+    externalId = extractXStatusId(rawUrl);
     embedType = externalId ? 'x' : 'card';
   } else if (platform.id === 'reddit') {
-    const rInfo = extractRedditPostInfo(targetUrl);
+    const rInfo = extractRedditPostInfo(rawUrl);
     externalId = rInfo?.postId || null;
     embedType = 'reddit';
   } else if (platform.id === 'instagram') {
-    const igInfo = extractInstagramId(targetUrl);
+    const igInfo = extractInstagramId(rawUrl);
     externalId = igInfo?.shortcode || null;
     embedType = externalId ? 'instagram' : 'card';
   }
 
-  const validUrl = await validateSafeUrl(targetUrl);
-  if (!validUrl) {
+  // If initial URL fails SSRF safety checks, reject immediately without touching network
+  if (!initialValid) {
     return {
-      title: fallbackTitle, description: null, thumbnailUrl: null,
-      platform: platform.id, embedType, externalId, resolvedUrl, contentType: 'link'
+      title: fallbackTitle,
+      description: null,
+      thumbnailUrl: null,
+      platform: platform.id,
+      embedType,
+      externalId,
+      resolvedUrl: null,
+      contentType: 'link',
     };
   }
 
-  // ── Phase 1: oEmbed — structured title/description ──
-  // oEmbed gives good title/author but X and Reddit return NO thumbnail.
+  let targetUrl = rawUrl;
+  let resolvedUrl: string | null = null;
+
+  // Follow redirects for pic.twitter.com media URLs safely
+  if (rawUrl.includes('pic.twitter.com')) {
+    const res = await safeFetch(rawUrl, { timeoutMs: 3500, maxRedirects: 2 });
+    if (res?.url && (res.url.includes('/status/') || res.url.includes('/statuses/'))) {
+      targetUrl = res.url;
+      resolvedUrl = res.url;
+    }
+  }
+
+  // Follow redirects for Reddit /s/ shortlinks safely
+  if (targetUrl.includes('reddit.com') && targetUrl.includes('/s/')) {
+    const res = await safeFetch(targetUrl, { timeoutMs: 3500, maxRedirects: 2 });
+    if (res?.url && res.url.includes('/comments/')) {
+      targetUrl = res.url;
+      resolvedUrl = res.url;
+    }
+  }
+
+  if (targetUrl !== rawUrl) {
+    platform = detectPlatform(targetUrl);
+    fallbackTitle = `${platform.label} Link`;
+    if (platform.id === 'youtube') {
+      externalId = extractYouTubeVideoId(targetUrl);
+      embedType = externalId ? 'youtube' : 'card';
+    } else if (platform.id === 'x') {
+      externalId = extractXStatusId(targetUrl);
+      embedType = externalId ? 'x' : 'card';
+    } else if (platform.id === 'reddit') {
+      const rInfo = extractRedditPostInfo(targetUrl);
+      externalId = rInfo?.postId || null;
+      embedType = 'reddit';
+    } else if (platform.id === 'instagram') {
+      const igInfo = extractInstagramId(targetUrl);
+      externalId = igInfo?.shortcode || null;
+      embedType = externalId ? 'instagram' : 'card';
+    }
+  }
+
+  // ── Phase 1: Structured metadata & media type extraction ──
   let oembedTitle: string | null = null;
   let oembedDesc: string | null = null;
   let oembedThumb: string | null = null;
+  let isDetectedVideo = false;
+  let isDetectedImage = false;
 
   if (platform.id === 'youtube') {
     try {
@@ -219,35 +146,112 @@ export async function extractMetadata(rawUrl: string): Promise<ExtractedMetadata
     } catch {}
   } else if (platform.id === 'x' && externalId) {
     try {
-      const r = await fetch(
-        `https://publish.twitter.com/oembed?url=${encodeURIComponent(targetUrl)}`,
-        { signal: AbortSignal.timeout(3500) },
-      );
-      if (r.ok) {
-        const d = await r.json();
-        let snippet: string | null = null;
-        if (d.html) {
-          const m = d.html.match(/<p[^>]*>(.*?)<\/p>/i);
-          if (m?.[1]) snippet = cleanHtmlString(m[1].replace(/<[^>]+>/g, ''));
+      // Primary: FxTwitter provides direct structured media (photos vs videos) + MP4 URLs
+      const fxRes = await fetch(`https://api.fxtwitter.com/status/${externalId}`, {
+        signal: AbortSignal.timeout(3500),
+      });
+      if (fxRes.ok) {
+        const fxData = await fxRes.json();
+        const tweet = fxData.tweet;
+        if (tweet) {
+          if (tweet.text) oembedTitle = cleanHtmlString(tweet.text);
+          if (tweet.author?.name) {
+            oembedDesc = `Posted by ${cleanHtmlString(tweet.author.name)}${tweet.author.screen_name ? ` (@${tweet.author.screen_name})` : ''}`;
+          }
+
+          if (tweet.media?.videos && tweet.media.videos.length > 0) {
+            isDetectedVideo = true;
+            oembedThumb = tweet.media.videos[0].thumbnail_url || tweet.media.videos[0].url;
+          } else if (tweet.media?.photos && tweet.media.photos.length > 0) {
+            isDetectedImage = true;
+            oembedThumb = tweet.media.photos[0].url;
+          }
         }
-        const author = cleanHtmlString(d.author_name);
-        oembedTitle = snippet || (author ? `Post by ${author}` : null);
-        oembedDesc = author ? `Posted by ${author}` : null;
       }
     } catch {}
+
+    // Fallback: Twitter oEmbed
+    if (!oembedTitle) {
+      try {
+        const r = await fetch(
+          `https://publish.twitter.com/oembed?url=${encodeURIComponent(targetUrl)}`,
+          { signal: AbortSignal.timeout(3500) },
+        );
+        if (r.ok) {
+          const d = await r.json();
+          let snippet: string | null = null;
+          if (d.html) {
+            const m = d.html.match(/<p[^>]*>(.*?)<\/p>/i);
+            if (m?.[1]) snippet = cleanHtmlString(m[1].replace(/<[^>]+>/g, ''));
+          }
+          const author = cleanHtmlString(d.author_name);
+          oembedTitle = snippet || (author ? `Post by ${author}` : null);
+          oembedDesc = author ? `Posted by ${author}` : null;
+        }
+      } catch {}
+    }
   } else if (platform.id === 'reddit') {
+    // Check if directly a v.redd.it video link
+    if (targetUrl.includes('v.redd.it')) {
+      isDetectedVideo = true;
+    }
+
+    // Primary: vxreddit proxy provides full unauthenticated OG metadata & video tags
     try {
-      const r = await fetch(
-        `https://www.reddit.com/oembed?url=${encodeURIComponent(targetUrl)}`,
-        { signal: AbortSignal.timeout(3500) },
-      );
-      if (r.ok) {
-        const d = await r.json();
-        oembedTitle = cleanHtmlString(d.title);
-        const a = cleanHtmlString(d.author_name);
-        oembedDesc = a ? `By u/${a}` : null;
+      const vxUrl = targetUrl.replace(/^(https?:\/\/)?(www\.)?(reddit\.com|redd\.it)/i, 'https://vxreddit.com');
+      const vxRes = await safeFetch(vxUrl, {
+        headers: { 'User-Agent': 'TelegramBot (like TwitterBot)' },
+        timeoutMs: 3500,
+        maxBytes: 150000,
+      });
+
+      if (vxRes && vxRes.ok && vxRes.text) {
+        const vxHtml = vxRes.text;
+
+        // Check if post is a video (video.other, player, og:video, v.redd.it)
+        if (
+          vxHtml.includes('video.other') ||
+          vxHtml.includes('name="twitter:card" content="player"') ||
+          vxHtml.includes('og:video') ||
+          vxHtml.includes('twitter:player') ||
+          vxHtml.includes('v.redd.it')
+        ) {
+          isDetectedVideo = true;
+        }
+
+        const titleMatch = vxHtml.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
+        if (titleMatch?.[1]) {
+          oembedTitle = cleanHtmlString(titleMatch[1]);
+        }
+
+        const siteMatch = vxHtml.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
+        if (siteMatch?.[1]) {
+          oembedDesc = cleanHtmlString(siteMatch[1]);
+        }
+
+        const imgMatch = vxHtml.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+        if (imgMatch?.[1]) {
+          oembedThumb = cleanHtmlString(imgMatch[1].replace(/&amp;/g, '&'));
+          if (!isDetectedVideo) isDetectedImage = true;
+        }
       }
     } catch {}
+
+    // Fallback: Reddit native oEmbed if vxreddit didn't resolve title
+    if (!oembedTitle) {
+      try {
+        const r = await fetch(
+          `https://www.reddit.com/oembed?url=${encodeURIComponent(targetUrl)}`,
+          { signal: AbortSignal.timeout(3500) },
+        );
+        if (r.ok) {
+          const d = await r.json();
+          oembedTitle = cleanHtmlString(d.title);
+          const a = cleanHtmlString(d.author_name);
+          oembedDesc = a ? `By u/${a}` : null;
+        }
+      } catch {}
+    }
   }
 
   // ── Phase 2: OG HTML scraper — ALWAYS runs to fill gaps (especially og:image) ──
@@ -256,35 +260,27 @@ export async function extractMetadata(rawUrl: string): Promise<ExtractedMetadata
   let ogThumb: string | null = null;
 
   try {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(validUrl.toString(), {
-      signal: controller.signal,
+    const res = await safeFetch(targetUrl, {
       headers: {
-        'User-Agent':
-          'TelegramBot (like TwitterBot)',
+        'User-Agent': 'TelegramBot (like TwitterBot)',
         Accept: 'text/html,application/xhtml+xml',
       },
-      redirect: 'follow',
+      timeoutMs: 4000,
+      maxBytes: 150000,
     });
-    clearTimeout(tid);
 
-    if (res.ok) {
-      const reader = res.body?.getReader();
-      let html = '';
-      if (reader) {
-        const decoder = new TextDecoder('utf-8');
-        let bytesRead = 0;
-        while (bytesRead < 150000) {
-          const { value, done } = await reader.read();
-          if (done || !value) break;
-          bytesRead += value.length;
-          html += decoder.decode(value, { stream: true });
-          if (html.includes('</head>')) break;
-        }
-        reader.cancel().catch(() => {});
-      } else {
-        html = await res.text();
+    if (res && res.ok && res.text) {
+      const html = res.text;
+
+      // Detect video tags across all platforms (including Reddit, X, etc.)
+      if (
+        html.includes('v.redd.it') ||
+        Boolean(html.match(/<meta[^>]+property=["']og:video/i)) ||
+        Boolean(html.match(/<meta[^>]+name=["']twitter:player/i)) ||
+        Boolean(html.match(/<meta[^>]+property=["']og:type["'][^>]+content=["']video/i)) ||
+        Boolean(html.match(/<video[^>]*>/i))
+      ) {
+        isDetectedVideo = true;
       }
 
       // Title
@@ -318,26 +314,10 @@ export async function extractMetadata(rawUrl: string): Promise<ExtractedMetadata
 
       ogThumb = imgMatch?.[1] ? cleanHtmlString(imgMatch[1]) : null;
 
-      // If it's Reddit, the generic og:image is often a share.redd.it banner. Try to get the real image from embed.
-      if (platform.id === 'reddit') {
-        try {
-          const embedRes = await fetch(`https://embed.reddit.com${new URL(targetUrl).pathname}`, {
-            signal: AbortSignal.timeout(3500)
-          });
-          if (embedRes.ok) {
-            const embedHtml = await embedRes.text();
-            const redditImages = embedHtml.match(/https:\/\/(?:preview|i)\.redd\.it\/[^"'\s&]+/g);
-            if (redditImages && redditImages.length > 0) {
-              ogThumb = cleanHtmlString(redditImages[0].replace(/&amp;/g, '&').replace(/&quot;/g, ''));
-            }
-          }
-        } catch {}
-      }
-
       // Resolve relative URLs
       if (ogThumb && !ogThumb.startsWith('http://') && !ogThumb.startsWith('https://')) {
         try {
-          ogThumb = new URL(ogThumb, validUrl).toString();
+          ogThumb = new URL(ogThumb, targetUrl).toString();
         } catch {
           ogThumb = null;
         }
@@ -351,11 +331,16 @@ export async function extractMetadata(rawUrl: string): Promise<ExtractedMetadata
   const finalThumb = oembedThumb || ogThumb || null;
   let contentType: 'image' | 'video' | 'link' = 'link';
   
-  if (embedType === 'youtube') {
+  const isVideoUrl =
+    isDetectedVideo ||
+    embedType === 'youtube' ||
+    platform.id === 'tiktok' ||
+    Boolean(targetUrl.match(/\.(mp4|webm|mov|m3u8)(\?.*)?$/i)) ||
+    Boolean(targetUrl.match(/\/(reel|reels|shorts|clip|clips)\//i));
+
+  if (isVideoUrl) {
     contentType = 'video';
-  } else if (embedType === 'instagram' && targetUrl.match(/\/(reel|reels)\//i)) {
-    contentType = 'video';
-  } else if (finalThumb) {
+  } else if (isDetectedImage || finalThumb) {
     contentType = 'image';
   }
 

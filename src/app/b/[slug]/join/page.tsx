@@ -1,17 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
 
-export default function JoinBoardPage() {
+function JoinBoardContent() {
   const params = useParams();
   const slug = params?.slug as string;
+  const searchParams = useSearchParams();
+  const token = searchParams.get('token') || '';
   const router = useRouter();
 
   const [supabase] = useState(() => createClient());
-  const [board, setBoard] = useState<any>(null);
+  const [board, setBoard] = useState<{ id: string; name: string; slug: string } | null>(null);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
@@ -27,32 +29,34 @@ export default function JoinBoardPage() {
 
       const { data: bData, error: bErr } = await supabase
         .from('boards')
-        .select('*')
+        .select('id, name, slug')
         .eq('slug', slug)
         .maybeSingle();
 
       if (bErr || !bData) {
-        setError('Board not found.');
-        return;
-      }
-      setBoard(bData);
+        // If user is not yet a member, RLS prevents reading board row directly
+        // That's expected for private boards, so we allow joining via token
+        setBoard({ id: '', name: slug, slug });
+      } else {
+        setBoard(bData);
 
-      // If already logged in, check if already member
-      if (user) {
-        const { data: member } = await supabase
-          .from('board_members')
-          .select('*')
-          .eq('board_id', bData.id)
-          .eq('user_id', user.id)
-          .maybeSingle();
+        // If already a member, navigate straight to board
+        if (user) {
+          const { data: member } = await supabase
+            .from('board_members')
+            .select('user_id')
+            .eq('board_id', bData.id)
+            .eq('user_id', user.id)
+            .maybeSingle();
 
-        if (member) {
-          // Already a member, go to board
-          router.push(`/b/${slug}`);
+          if (member) {
+            router.push(`/b/${slug}`);
+            return;
+          }
         }
       }
     } catch (err: any) {
-      setError(err.message || 'Error loading board');
+      setError(err.message || 'Error loading invitation');
     } finally {
       setLoading(false);
     }
@@ -64,20 +68,22 @@ export default function JoinBoardPage() {
 
   const handleJoin = async () => {
     if (!user) {
-      router.push('/#auth');
+      router.push(`/login?redirect=/b/${slug}/join${token ? `?token=${encodeURIComponent(token)}` : ''}`);
       return;
     }
 
     setJoining(true);
+    setError(null);
     try {
-      const { error } = await supabase.from('board_members').insert({
-        board_id: board.id,
-        user_id: user.id,
-        role: 'member',
+      const res = await fetch(`/api/boards/${slug}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
       });
 
-      if (error && error.code !== '23505') {
-        throw error;
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Invalid or expired invite link');
       }
 
       router.push(`/b/${slug}`);
@@ -95,7 +101,7 @@ export default function JoinBoardPage() {
     );
   }
 
-  if (error || !board) {
+  if (error && !board) {
     return (
       <div className="container" style={{ padding: '6rem 0', textAlign: 'center' }}>
         <div className="card" style={{ maxWidth: '440px', margin: '0 auto' }}>
@@ -107,6 +113,8 @@ export default function JoinBoardPage() {
     );
   }
 
+  const displayName = board?.name || slug;
+
   return (
     <div className="container" style={{ padding: '6rem 0' }}>
       <div className="card" style={{ maxWidth: '480px', margin: '0 auto', textAlign: 'center', padding: '3rem 2rem' }}>
@@ -114,10 +122,16 @@ export default function JoinBoardPage() {
         <span className="badge badge-primary" style={{ marginBottom: '1rem' }}>
           Group Invitation
         </span>
-        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{board.name}</h1>
+        <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>{displayName}</h1>
         <p className="text-secondary" style={{ marginBottom: '2rem' }}>
-          You’ve been invited to join <strong>{board.name}</strong> on Memeboard to collect and browse links with friends.
+          You’ve been invited to join <strong>{displayName}</strong> on Memeboard to collect and browse links with friends.
         </p>
+
+        {error && (
+          <div className="p-3 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
+            {error}
+          </div>
+        )}
 
         {user ? (
           <button
@@ -127,12 +141,12 @@ export default function JoinBoardPage() {
             style={{ width: '100%' }}
             id="accept-invite-btn"
           >
-            {joining ? 'Joining...' : `Join ${board.name} →`}
+            {joining ? 'Joining...' : `Join ${displayName} →`}
           </button>
         ) : (
           <div className="flex flex-col gap-3">
             <Link
-              href={`/login?redirect=/b/${slug}/join`}
+              href={`/login?redirect=/b/${slug}/join${token ? `?token=${encodeURIComponent(token)}` : ''}`}
               className="btn btn-primary btn-lg"
               style={{ width: '100%' }}
             >
@@ -145,5 +159,13 @@ export default function JoinBoardPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function JoinBoardPage() {
+  return (
+    <Suspense fallback={<div className="container" style={{ padding: '6rem 0', textAlign: 'center' }}>Loading...</div>}>
+      <JoinBoardContent />
+    </Suspense>
   );
 }

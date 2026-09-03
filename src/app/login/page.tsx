@@ -113,30 +113,30 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-start justify-center p-4 pt-32 bg-bg-cream bg-noise">
-      <div className="w-full max-w-[440px] bg-white rounded-3xl p-8 shadow-[0_8px_30px_rgba(0,0,0,0.06)] border border-white relative z-10">
+    <div className="min-h-screen flex items-start justify-center p-4 pt-32 bg-page bg-noise text-text-primary">
+      <div className="w-full max-w-[440px] bg-surface rounded-3xl p-8 shadow-xl border border-border-subtle relative z-10">
 
         <div className="text-center mb-6">
           <Link href="/" className="inline-flex items-center gap-2 mb-4">
-            <Zap className="w-5 h-5 text-door-purple" fill="currentColor" />
-            <span className="font-extrabold tracking-tight text-text-dark text-lg">MEMEBOARD</span>
+            <Zap className="w-5 h-5 text-primary" fill="currentColor" />
+            <span className="font-extrabold tracking-tight text-text-primary text-lg">MEMEBOARD</span>
           </Link>
-          <h2 className="text-2xl font-bold tracking-tight text-text-dark mb-2">
+          <h2 className="text-2xl font-bold tracking-tight text-text-primary mb-2">
             {authMode === 'signin' ? 'Welcome Back' : 'Create an Account'}
           </h2>
-          <p className="text-text-muted text-sm font-medium">
+          <p className="text-text-secondary text-sm font-medium">
             {authMode === 'signin'
               ? 'Sign in to access your shared boards'
               : 'Join Memeboard to share and browse with your crew'}
           </p>
         </div>
 
-        <div className="flex bg-slate-100 p-1 rounded-xl mb-6">
+        <div className="flex bg-surface-elevated p-1 rounded-xl mb-6 border border-border-subtle">
           <button
             type="button"
             className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${authMode === 'signin'
-              ? 'bg-white text-text-dark shadow-sm'
-              : 'text-text-muted hover:text-text-dark'
+              ? 'bg-surface text-text-primary shadow-sm'
+              : 'text-text-secondary hover:text-text-primary'
               }`}
             onClick={() => {
               setAuthMode('signin');
@@ -148,8 +148,8 @@ function LoginForm() {
           <button
             type="button"
             className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${authMode === 'signup'
-              ? 'bg-white text-text-dark shadow-sm'
-              : 'text-text-muted hover:text-text-dark'
+              ? 'bg-surface text-text-primary shadow-sm'
+              : 'text-text-secondary hover:text-text-primary'
               }`}
             onClick={() => {
               setAuthMode('signup');
@@ -162,8 +162,8 @@ function LoginForm() {
 
         {message && (
           <div className={`p-4 rounded-xl mb-6 text-sm font-medium border ${message.type === 'error'
-            ? 'bg-red-50 text-red-600 border-red-100'
-            : 'bg-green-50 text-green-600 border-green-100'
+            ? 'bg-red-500/10 text-red-500 border-red-500/20'
+            : 'bg-green-500/10 text-green-500 border-green-500/20'
             }`}>
             {message.text}
           </div>
@@ -172,46 +172,46 @@ function LoginForm() {
         <form onSubmit={handleAuth} className="space-y-4">
           {authMode === 'signup' && (
             <div>
-              <label className="block text-sm font-semibold text-text-dark mb-1.5">Username</label>
+              <label className="block text-sm font-semibold text-text-primary mb-1.5">Username</label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">@</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary font-medium">@</span>
                 <input
                   type="text"
                   required
                   placeholder="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                  className="w-full h-12 pl-9 pr-4 bg-slate-50 border border-slate-200 rounded-xl text-text-dark focus:bg-white focus:outline-none focus:border-door-purple/40 focus:ring-4 focus:ring-door-purple/5 transition-all"
+                  className="w-full h-12 pl-9 pr-4 bg-surface-elevated border border-border-subtle rounded-xl text-text-primary placeholder-text-secondary/50 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
                   maxLength={24}
                 />
               </div>
-              <span className="text-xs text-slate-400 mt-1.5 block font-medium">
+              <span className="text-xs text-text-secondary/70 mt-1.5 block font-medium">
                 Lowercase, numbers, hyphens. Used for public identity.
               </span>
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-text-dark mb-1.5">Email</label>
+            <label className="block text-sm font-semibold text-text-primary mb-1.5">Email</label>
             <input
               type="email"
               required
               placeholder="name@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl text-text-dark placeholder-slate-400 focus:bg-white focus:outline-none focus:border-door-purple/40 focus:ring-4 focus:ring-door-purple/5 transition-all"
+              className="w-full h-12 px-4 bg-surface-elevated border border-border-subtle rounded-xl text-text-primary placeholder-text-secondary/50 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-text-dark mb-1.5">Password</label>
+            <label className="block text-sm font-semibold text-text-primary mb-1.5">Password</label>
             <input
               type="password"
               required
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl text-text-dark placeholder-slate-400 focus:bg-white focus:outline-none focus:border-door-purple/40 focus:ring-4 focus:ring-door-purple/5 transition-all"
+              className="w-full h-12 px-4 bg-surface-elevated border border-border-subtle rounded-xl text-text-primary placeholder-text-secondary/50 focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary/10 transition-all"
               minLength={6}
             />
           </div>
@@ -219,7 +219,7 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full h-12 bg-door-purple hover:bg-door-purple-light text-white font-bold rounded-xl flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2 shadow-sm"
+            className="w-full h-12 bg-primary hover:opacity-90 text-white font-bold rounded-xl flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed mt-2 shadow-sm"
           >
             {loading ? 'Please wait...' : authMode === 'signin' ? 'Sign In →' : 'Create Account →'}
           </button>
@@ -228,7 +228,7 @@ function LoginForm() {
         <div className="mt-8 text-center">
           <Link
             href="/"
-            className="text-sm font-medium text-slate-400 hover:text-text-dark transition-colors"
+            className="text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
           >
             ← Back to Home
           </Link>
@@ -240,7 +240,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-bg-cream bg-noise"><div className="text-text-muted font-medium">Loading...</div></div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-page bg-noise"><div className="text-text-secondary font-medium">Loading...</div></div>}>
       <LoginForm />
     </Suspense>
   );

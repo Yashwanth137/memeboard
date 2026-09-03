@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import './globals.css';
 import Navbar from '@/components/Navbar';
+import { ThemeProvider } from '@/components/ThemeProvider';
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'] });
 
@@ -18,9 +19,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className={jakarta.className}>
-      <body suppressHydrationWarning className="bg-[#f5f0e4] text-text-dark min-h-screen flex flex-col">
-        <Navbar />
-        <main className="flex-1">{children}</main>
+      <body suppressHydrationWarning className="bg-page text-text-primary min-h-screen flex flex-col">
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+          <Navbar />
+          <main className="flex-1">{children}</main>
+        </ThemeProvider>
       </body>
     </html>
   );

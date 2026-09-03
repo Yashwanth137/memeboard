@@ -1,11 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { extractUrls, sendTelegramMessage } from '@/lib/telegram';
-import { detectPlatform } from '@/lib/platform';
-import { enrichLinkMetadata } from '@/lib/metadata';
+import { ingestLink } from '@/lib/ingestion/pipeline';
+import { rateLimit } from '@/lib/security/rate-limit';
 
 export async function POST(req: NextRequest) {
   try {
+    // 1. Webhook Secret Token Verification
+    const configuredSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (configuredSecret) {
+      const incomingSecret = req.headers.get('x-telegram-bot-api-secret-token');
+      if (incomingSecret !== configuredSecret) {
+        return NextResponse.json({ error: 'Unauthorized: Invalid webhook secret' }, { status: 401 });
+      }
+    }
+
     const body = await req.json();
 
     const message = body?.message;
@@ -18,9 +27,19 @@ export async function POST(req: NextRequest) {
     const telegramUsername = message.from.username || message.from.first_name || 'Friend';
     const text = message.text.trim();
 
+    // 2. Shared Rate Limiting per Telegram chat ID
+    const rl = await rateLimit(`tg:${chatId}`, 20, 60);
+    if (!rl.success) {
+      await sendTelegramMessage(
+        chatId,
+        '⚠️ <b>Slow down:</b> Too many requests sent recently. Please wait a minute before dropping more links.'
+      );
+      return NextResponse.json({ ok: true });
+    }
+
     const supabase = createAdminClient();
 
-    // 1. Handle /start command (with or without connect code)
+    // 3. Handle /start command (with or without connect code)
     if (text.startsWith('/start')) {
       const parts = text.split(/\s+/);
       const code = parts[1]?.trim(); // /start <code>
@@ -160,109 +179,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // 2. Handle Link Submissions
+    // 4. Handle Link Submissions via Unified Ingestion Pipeline
     const urls = extractUrls(text);
     if (urls.length > 0) {
       for (const url of urls) {
-        const platform = detectPlatform(url);
-        const fallbackTitle = `${platform.label} Link`;
+        const result = await ingestLink({
+          source: 'telegram',
+          telegramUserId,
+          url,
+        });
 
-        // Try RPC first (with default 'Random' category)
-        const { data: rpcRes, error: rpcErr } = await (supabase as any).rpc(
-          'telegram_submit_link',
-          {
-            p_telegram_user_id: telegramUserId,
-            p_url: url,
-            p_platform: platform.id,
-            p_title: fallbackTitle,
-          }
-        );
-
-        if (!rpcErr && rpcRes) {
-          if (rpcRes.success) {
-            await sendTelegramMessage(chatId, `Added to "${rpcRes.board_name}"`);
-
-            // Non-blocking asynchronous metadata enrichment
-            if (rpcRes.link_id) {
-              enrichLinkMetadata(rpcRes.link_id, url).catch((e) =>
-                console.error('Async metadata enrichment error:', e)
-              );
-            }
-            continue;
-          } else if (rpcRes.error === 'Telegram account not linked') {
-            await sendTelegramMessage(
-              chatId,
-              `⚠️ <b>Telegram Account Not Linked</b>\n\nPlease log in to Memeboard on the web and click "Connect Telegram" so we know which board to save your links to!`
-            );
-            return NextResponse.json({ ok: true });
-          } else if (rpcRes.error === 'No boards found for user') {
-            await sendTelegramMessage(
-              chatId,
-              `⚠️ You don't have any boards yet.\n\nPlease create a board on your Memeboard dashboard first!`
-            );
-            return NextResponse.json({ ok: true });
-          }
-        }
-
-        // Direct table fallback
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('telegram_user_id', telegramUserId)
-          .maybeSingle();
-
-        if (!profile) {
+        if (result.success) {
+          await sendTelegramMessage(chatId, `Added to "${result.boardName}" 🚀`);
+        } else if (result.error === 'Telegram account not linked to Memeboard') {
           await sendTelegramMessage(
             chatId,
-            `⚠️ <b>Telegram Account Not Linked</b>\n\nPlease log in to Memeboard on the web and click "Connect Telegram" so we know which board to save your links to!`
+            `⚠️ <b>Telegram Account Not Linked</b>\n\nPlease log in to Memeboard on the web and click "Connect Telegram" to link your account!`
           );
           return NextResponse.json({ ok: true });
-        }
-
-        const { data: memberships } = await supabase
-          .from('board_members')
-          .select('boards ( id, name, slug )')
-          .eq('user_id', profile.id)
-          .order('joined_at', { ascending: false })
-          .limit(1);
-
-        const targetBoard = (memberships?.[0] as any)?.boards;
-
-        if (!targetBoard) {
+        } else if (result.error === 'No active board found for your account') {
           await sendTelegramMessage(
             chatId,
             `⚠️ You don't have any boards yet.\n\nPlease create a board on your Memeboard dashboard first!`
           );
           return NextResponse.json({ ok: true });
-        }
-
-        // Find default 'Random' category
-        const { data: randomCat } = await supabase
-          .from('categories')
-          .select('id')
-          .eq('slug', 'random')
-          .is('board_id', null)
-          .maybeSingle();
-
-        const { data: insertedLink } = await supabase
-          .from('links')
-          .insert({
-            board_id: targetBoard.id,
-            submitted_by: profile.id,
-            url: url,
-            platform: platform.id,
-            title: fallbackTitle,
-            category_id: randomCat?.id || null,
-          })
-          .select('id')
-          .single();
-
-        await sendTelegramMessage(chatId, `Added to "${targetBoard.name}"`);
-
-        // Non-blocking asynchronous metadata enrichment
-        if (insertedLink?.id) {
-          enrichLinkMetadata(insertedLink.id, url).catch((e) =>
-            console.error('Async metadata enrichment error:', e)
+        } else {
+          await sendTelegramMessage(
+            chatId,
+            `⚠️ Could not add link: ${result.error || 'Unknown error'}`
           );
         }
       }
