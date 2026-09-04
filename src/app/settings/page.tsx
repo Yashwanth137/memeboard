@@ -23,6 +23,7 @@ import {
   Unlink,
   Loader2,
   X,
+  Key,
 } from 'lucide-react';
 import WorkspaceLayout, { useWorkspace } from '@/components/dashboard/WorkspaceLayout';
 import { createClient } from '@/lib/supabase/client';
@@ -98,6 +99,39 @@ function SettingsContent() {
   const telegramDeepLink = linkCode
     ? `https://t.me/${botUsername}?start=${linkCode}`
     : `https://t.me/${botUsername}`;
+
+  const handleConnectTelegram = async () => {
+    let codeToUse = linkCode;
+
+    // If no active code, generate one on the fly
+    if (!codeToUse) {
+      setIsGeneratingCode(true);
+      setStatusMessage(null);
+      try {
+        const { data, error } = await supabase.rpc('generate_telegram_link_code');
+        if (error) throw error;
+        if (data) {
+          codeToUse = data;
+          setLinkCode(data);
+          workspace?.refreshWorkspace();
+        }
+      } catch (err: any) {
+        setStatusMessage({
+          type: 'error',
+          text: err.message || 'Failed to generate connect code.',
+        });
+        setIsGeneratingCode(false);
+        return;
+      } finally {
+        setIsGeneratingCode(false);
+      }
+    }
+
+    const targetUrl = codeToUse
+      ? `https://t.me/${botUsername}?start=${codeToUse}`
+      : `https://t.me/${botUsername}`;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+  };
 
   const handleCopyCommand = async () => {
     if (!linkCode) return;
@@ -444,15 +478,19 @@ function SettingsContent() {
                       <span>Not Linked</span>
                     </span>
 
-                    <a
-                      href={telegramDeepLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#229ED9] hover:bg-[#229ED9]/90 active:scale-[0.99] text-white text-xs font-bold shadow-xs transition-all"
+                    <button
+                      type="button"
+                      onClick={handleConnectTelegram}
+                      disabled={isGeneratingCode}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#229ED9] hover:bg-[#229ED9]/90 active:scale-[0.99] text-white text-xs font-bold shadow-xs transition-all disabled:opacity-75"
                     >
-                      <Send className="w-3.5 h-3.5" />
+                      {isGeneratingCode ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Send className="w-3.5 h-3.5" />
+                      )}
                       <span>Connect Telegram</span>
-                    </a>
+                    </button>
                   </>
                 )}
               </div>
@@ -494,52 +532,83 @@ function SettingsContent() {
             </div>
           </div>
 
-          {/* Expandable Manual Command Fallback */}
-          {!isTelegramConnected && linkCode && (
+          {/* Expandable Manual Command & Code Fallback */}
+          {!isTelegramConnected && (
             <div className="pt-1">
-              <button
-                type="button"
-                onClick={() => setShowManualCode(!showManualCode)}
-                className="text-xs text-text-secondary hover:text-text-primary underline"
-              >
-                {showManualCode ? 'Hide manual command' : 'Or send command manually'}
-              </button>
-
-              {showManualCode && (
-                <div className="mt-2.5 p-3 rounded-xl bg-surface border border-border-subtle flex items-center justify-between gap-2">
-                  <span className="font-mono text-xs text-text-primary truncate select-all pl-1">
-                    /start {linkCode}
-                  </span>
-                  <div className="flex items-center gap-1.5 shrink-0">
+              {linkCode ? (
+                <div>
+                  <div className="flex items-center justify-between text-xs mb-1">
                     <button
                       type="button"
-                      onClick={handleCopyCommand}
-                      className="px-2.5 py-1.5 rounded-lg bg-surface-elevated hover:bg-black/5 dark:hover:bg-white/10 text-text-secondary hover:text-text-primary text-xs font-semibold transition-all flex items-center gap-1 border border-border-subtle"
+                      onClick={() => setShowManualCode(!showManualCode)}
+                      className="text-text-secondary hover:text-text-primary underline flex items-center gap-1 font-medium"
                     >
-                      {copied ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-500" />
-                          <span className="text-emerald-500">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span>Copy</span>
-                        </>
-                      )}
+                      {showManualCode ? 'Hide manual command' : 'Or send command manually'}
                     </button>
                     <button
                       type="button"
                       onClick={handleGenerateNewCode}
                       disabled={isGeneratingCode}
-                      className="p-1.5 rounded-lg hover:bg-surface-elevated text-text-secondary hover:text-primary transition-colors disabled:opacity-50"
-                      title="Generate new code"
+                      className="text-text-secondary hover:text-primary flex items-center gap-1 font-medium transition-colors disabled:opacity-50 text-[11px]"
+                      title="Generate a new connect code"
                     >
                       <RefreshCw
-                        className={`w-3.5 h-3.5 ${isGeneratingCode ? 'animate-spin' : ''}`}
+                        className={`w-3 h-3 ${isGeneratingCode ? 'animate-spin' : ''}`}
                       />
+                      <span>New code</span>
                     </button>
                   </div>
+
+                  {showManualCode && (
+                    <div className="mt-2 p-3 rounded-xl bg-surface border border-border-subtle flex items-center justify-between gap-2">
+                      <span className="font-mono text-xs text-text-primary truncate select-all pl-1">
+                        /start {linkCode}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleCopyCommand}
+                          className="px-2.5 py-1.5 rounded-lg bg-surface-elevated hover:bg-black/5 dark:hover:bg-white/10 text-text-secondary hover:text-text-primary text-xs font-semibold transition-all flex items-center gap-1 border border-border-subtle"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-500" />
+                              <span className="text-emerald-500">Copied</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-surface-elevated/50 border border-border-subtle flex items-center justify-between gap-3">
+                  <div className="text-xs">
+                    <span className="font-semibold text-text-primary block">
+                      No Connect Code
+                    </span>
+                    <span className="text-text-secondary text-[11px]">
+                      Generate a code to link your bot via manual /start command.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGenerateNewCode}
+                    disabled={isGeneratingCode}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#229ED9]/10 hover:bg-[#229ED9]/20 text-[#229ED9] text-xs font-bold transition-all border border-[#229ED9]/20 disabled:opacity-50 shrink-0"
+                  >
+                    {isGeneratingCode ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Key className="w-3 h-3" />
+                    )}
+                    <span>Generate Code</span>
+                  </button>
                 </div>
               )}
             </div>
