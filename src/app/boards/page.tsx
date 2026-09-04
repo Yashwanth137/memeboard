@@ -36,12 +36,12 @@ function BoardsBody({
   return (
     <>
       {/* Contextual Header: Strictly Aligned with Board Grid */}
-      <div className="flex items-end justify-between gap-4 mb-8">
+      <div className="flex items-end justify-between gap-4 mb-5 sm:mb-8">
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-text-primary mb-1">
             Your Boards
           </h1>
-          <p className="text-sm font-medium text-text-secondary">
+          <p className="text-xs sm:text-sm font-medium text-text-secondary">
             The places your group keeps things.
           </p>
         </div>
@@ -59,7 +59,7 @@ function BoardsBody({
 
       {/* Board Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 w-full">
           {[1, 2, 3, 4].map((i) => (
             <div
               key={i}
@@ -80,7 +80,7 @@ function BoardsBody({
       ) : boards.length === 0 ? (
         <EmptyBoards onCreateClick={onCreateClick} />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6 w-full">
           {boards.map((board) => (
             <BoardCard
               key={board.id}

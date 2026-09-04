@@ -96,7 +96,7 @@ export default function Sidebar({
       <motion.div
         animate={{ width: collapsed ? 72 : 232 }}
         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-        className="shrink-0"
+        className="shrink-0 hidden md:block"
         aria-hidden="true"
       />
 
@@ -104,7 +104,7 @@ export default function Sidebar({
       <motion.aside
         animate={{ width: collapsed ? 72 : 232 }}
         transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-        className="fixed top-0 left-0 bottom-0 h-screen z-30 overflow-hidden flex flex-col pointer-events-auto shadow-xs"
+        className="fixed top-0 left-0 bottom-0 h-screen z-30 overflow-hidden hidden md:flex flex-col pointer-events-auto shadow-xs"
       >
         <div className="flex flex-col h-full bg-surface/95 dark:bg-surface-elevated/90 backdrop-blur-md border-r border-border-subtle/80 select-none overflow-hidden">
           {/* Brand / Logo Header with Collapse/Expand Arrow */}

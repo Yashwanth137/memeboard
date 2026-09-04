@@ -78,7 +78,7 @@ export default function PostCard({
           />
 
           {/* Platform Identity Badge (Top-Left translucent pill) */}
-          <div className="absolute top-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded bg-black/65 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold flex items-center gap-1 shadow-sm select-none">
+          <div className="absolute top-1 left-1 md:top-1.5 md:left-1.5 z-20 px-1 md:px-1.5 py-0.5 rounded bg-black/65 backdrop-blur-md border border-white/10 text-white text-[8px] md:text-[9px] font-bold flex items-center gap-1 shadow-sm select-none">
             <span
               className="w-1.5 h-1.5 rounded-full"
               style={{ backgroundColor: platformInfo.accentColor }}
@@ -89,8 +89,8 @@ export default function PostCard({
           {/* Video Play Indicator */}
           {link.content_type === 'video' && (
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-              <div className="w-7 h-7 rounded-full bg-black/70 text-white flex items-center justify-center backdrop-blur-xs shadow-md transform transition-transform group-hover:scale-110">
-                <Play className="w-3 h-3 fill-current translate-x-0.5" />
+              <div className="w-6 h-6 md:w-7 md:h-7 rounded-full bg-black/70 text-white flex items-center justify-center backdrop-blur-xs shadow-md transform transition-transform group-hover:scale-110">
+                <Play className="w-2.5 h-2.5 md:w-3 md:h-3 fill-current translate-x-0.5" />
               </div>
             </div>
           )}
@@ -127,29 +127,29 @@ export default function PostCard({
           </div>
         </div>
       ) : (
-        <div className="aspect-[16/10] bg-surface-elevated/40 border-b border-border-subtle/60 flex flex-col items-center justify-center text-center gap-1 p-3 relative">
-          <div className="absolute top-1.5 left-1.5 z-20 px-1.5 py-0.5 rounded bg-black/65 backdrop-blur-md border border-white/10 text-white text-[9px] font-bold flex items-center gap-1 shadow-sm">
+        <div className="aspect-[16/10] bg-surface-elevated/40 border-b border-border-subtle/60 flex flex-col items-center justify-center text-center gap-1 p-2 md:p-3 relative">
+          <div className="absolute top-1 left-1 md:top-1.5 md:left-1.5 z-20 px-1 md:px-1.5 py-0.5 rounded bg-black/65 backdrop-blur-md border border-white/10 text-white text-[8px] md:text-[9px] font-bold flex items-center gap-1 shadow-sm">
             <span
               className="w-1.5 h-1.5 rounded-full"
               style={{ backgroundColor: platformInfo.accentColor }}
             />
             <span>{platformInfo.label}</span>
           </div>
-          <div className="w-6 h-6 rounded-lg bg-surface flex items-center justify-center shadow-2xs">
-            <Zap className="w-3 h-3 text-accent" fill="currentColor" />
+          <div className="w-5 h-5 md:w-6 md:h-6 rounded-lg bg-surface flex items-center justify-center shadow-2xs">
+            <Zap className="w-2.5 h-2.5 md:w-3 md:h-3 text-accent" fill="currentColor" />
           </div>
-          <span className="text-[10px] font-mono text-text-secondary/70">
+          <span className="text-[9px] md:text-[10px] font-mono text-text-secondary/70">
             {platformInfo.domain}
           </span>
         </div>
       )}
 
       {/* Content & Metadata Area (Compact, tight visual archive) */}
-      <div className="p-2.5 flex flex-col gap-1 flex-1 justify-between">
+      <div className="p-2 md:p-2.5 flex flex-col gap-1 flex-1 justify-between min-w-0">
         <div>
           {/* Title */}
           <h3
-            className="text-xs font-bold text-text-primary leading-tight line-clamp-1 group-hover:text-primary transition-colors"
+            className="text-[11px] md:text-xs font-bold text-text-primary leading-snug md:leading-tight line-clamp-2 md:line-clamp-1 min-w-0 group-hover:text-primary transition-colors"
             title={link.title || link.url}
           >
             {link.title || `${platformInfo.label} Link`}
@@ -158,7 +158,7 @@ export default function PostCard({
           {/* Secondary Category Tag (only if present) */}
           {link.category && (
             <div className="mt-0.5">
-              <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-elevated text-text-secondary/70 border border-border-subtle/40">
+              <span className="inline-block text-[8px] md:text-[9px] font-bold px-1.5 py-0.2 rounded bg-surface-elevated text-text-secondary/70 border border-border-subtle/40">
                 {link.category.name}
               </span>
             </div>
@@ -166,23 +166,25 @@ export default function PostCard({
         </div>
 
         {/* Footer: Attribution & Overflow Menu */}
-        <div className="pt-1.5 border-t border-border-subtle/40 flex items-center justify-between mt-0.5">
-          <div className="flex items-center gap-1 text-[10px] text-text-secondary truncate">
-            <span className="font-semibold text-text-primary/90 truncate">{submitterName}</span>
-            <span className="opacity-40">·</span>
+        <div className="pt-1 md:pt-1.5 border-t border-border-subtle/40 flex items-center justify-between gap-1 md:gap-2 mt-0.5 min-w-0">
+          <div className="flex items-center gap-1 text-[9px] md:text-[10px] text-text-secondary truncate min-w-0 flex-1">
+            <span className="font-semibold text-text-primary/90 truncate min-w-0">{submitterName}</span>
+            <span className="opacity-40 shrink-0">·</span>
             <time className="opacity-75 shrink-0" dateTime={link.created_at}>
               {formatTimeAgo(link.created_at)}
             </time>
           </div>
 
-          <PostMenu
-            url={link.url}
-            canEdit={isOwner}
-            canDelete={canDelete}
-            onCopyUrl={handleCopyUrl}
-            onEdit={() => onEditPost(link)}
-            onDelete={() => onDeletePost(link.id)}
-          />
+          <div className="shrink-0">
+            <PostMenu
+              url={link.url}
+              canEdit={isOwner}
+              canDelete={canDelete}
+              onCopyUrl={handleCopyUrl}
+              onEdit={() => onEditPost(link)}
+              onDelete={() => onDeletePost(link.id)}
+            />
+          </div>
         </div>
       </div>
     </motion.article>

@@ -606,11 +606,11 @@ export default function BoardPage() {
   if (boardLoading) {
     return (
       <WorkspaceLayout activeSlug={slug} activeBoardName={board?.name} boardMembers={sidebarMembers}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-3.5">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2.5 md:gap-3.5">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
             <div
               key={i}
-              className="flex flex-col bg-surface rounded-xl border border-border-subtle overflow-hidden h-[240px]"
+              className="flex flex-col bg-surface rounded-xl border border-border-subtle overflow-hidden h-[180px] md:h-[240px]"
             >
               <div className="w-full aspect-[16/10] bg-surface-elevated animate-pulse border-b border-border-subtle/80" />
               <div className="p-2.5 flex flex-col gap-1.5 flex-1">
@@ -707,11 +707,11 @@ export default function BoardPage() {
 
       {/* 3. Post Grid or Empty / Filter-Empty State */}
       {feedLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-3.5">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2.5 md:gap-3.5">
           {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
             <div
               key={i}
-              className="flex flex-col bg-surface rounded-xl border border-border-subtle overflow-hidden h-[240px]"
+              className="flex flex-col bg-surface rounded-xl border border-border-subtle overflow-hidden h-[180px] md:h-[240px]"
             >
               <div className="w-full aspect-[16/10] bg-surface-elevated animate-pulse border-b border-border-subtle/80" />
               <div className="p-2.5 flex flex-col gap-1.5 flex-1">

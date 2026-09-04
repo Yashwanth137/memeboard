@@ -9,10 +9,10 @@ interface InteractiveDoorProps {
 
 export default function InteractiveDoor({ isOpen }: InteractiveDoorProps) {
   return (
-    <div className="relative w-full max-w-[320px] aspect-[1/2] mx-auto perspective-[1200px]">
+    <div className="relative w-full max-w-[250px] sm:max-w-[275px] xl:max-w-[320px] aspect-[1/2] mx-auto perspective-[1200px]">
       
       {/* Outer Door Frame / Wall Cutout */}
-      <div className="absolute inset-0 rounded-t-full border-[16px] border-[#e8e2d4] bg-bg-cream shadow-[inset_0_4px_20px_rgba(0,0,0,0.4),0_10px_30px_rgba(0,0,0,0.1)] flex items-end justify-center overflow-hidden">
+      <div className="absolute inset-0 rounded-t-full ring-1 ring-[#b8ae9d] border-[12px] sm:border-[14px] xl:border-[16px] border-[#e8e2d4] bg-bg-cream shadow-[inset_0_4px_20px_rgba(0,0,0,0.4),0_10px_30px_rgba(0,0,0,0.1)] flex items-end justify-center overflow-hidden">
         
         {/* Bright light behind the door */}
         <motion.div 
@@ -71,7 +71,7 @@ export default function InteractiveDoor({ isOpen }: InteractiveDoorProps) {
       </div>
 
       {/* Welcome Mat */}
-      <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[110%] h-[20px] bg-[#a88a5b] rounded-sm transform perspective-[500px] rotateX-[60deg] shadow-[0_10px_20px_rgba(0,0,0,0.2)] flex items-center justify-center">
+      <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-[110%] h-[20px] bg-[#a88a5b] border border-[#7d653f]/30 rounded-sm transform perspective-[500px] rotateX-[60deg] shadow-[0_10px_20px_rgba(0,0,0,0.2)] flex items-center justify-center">
         <span className="text-[#5c4a3d] text-[10px] font-bold uppercase tracking-widest opacity-80">Come on in ♡</span>
       </div>
 

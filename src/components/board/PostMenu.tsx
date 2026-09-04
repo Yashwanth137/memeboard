@@ -39,11 +39,11 @@ export default function PostMenu({
     <div className="relative" ref={menuRef} onClick={(e) => e.stopPropagation()}>
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors"
+        className="p-1 md:p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors cursor-pointer"
         title="More actions"
         aria-label="Post actions"
       >
-        <MoreVertical className="w-4 h-4" />
+        <MoreVertical className="w-3.5 h-3.5 md:w-4 md:h-4" />
       </button>
 
       {open && (

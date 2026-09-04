@@ -30,11 +30,11 @@ export default function BoardCard({
       whileHover={{ y: -5 }}
       whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-      className="group h-full flex flex-col"
+      className="group h-full flex flex-col w-full min-w-0"
     >
       <Link
         href={`/b/${slug}`}
-        className="flex flex-col h-full bg-surface rounded-[26px] border border-border-subtle overflow-hidden shadow-xs hover:shadow-xl hover:border-primary/40 dark:hover:border-primary/50 transition-all duration-300"
+        className="flex flex-col h-full bg-surface rounded-[24px] sm:rounded-[26px] border border-border-subtle overflow-hidden shadow-xs hover:shadow-xl hover:border-primary/40 dark:hover:border-primary/50 transition-all duration-300 w-full"
       >
         {/* 16:10 Media Region */}
         <div className="aspect-[16/10] w-full bg-surface-elevated border-b border-border-subtle/80 overflow-hidden relative p-2.5 sm:p-3">
@@ -65,26 +65,26 @@ export default function BoardCard({
           )}
 
           {/* Subtle depth gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/5 dark:from-black/20 to-transparent pointer-events-none rounded-t-[26px]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/5 dark:from-black/20 to-transparent pointer-events-none rounded-t-[24px] sm:rounded-t-[26px]" />
         </div>
 
         {/* Board Information Area */}
-        <div className="p-5 sm:p-6 flex flex-col flex-1">
-          <div className="flex items-start justify-between gap-3 mb-2">
-            <h3 className="text-xl sm:text-2xl font-extrabold tracking-tight text-text-primary leading-tight group-hover:text-primary transition-colors line-clamp-1">
+        <div className="p-4 sm:p-5 md:p-6 flex flex-col flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-2 sm:gap-3 mb-2">
+            <h3 className="text-lg sm:text-xl md:text-2xl font-extrabold tracking-tight text-text-primary leading-tight group-hover:text-primary transition-colors line-clamp-2 min-w-0 flex-1">
               {name}
             </h3>
-            <ArrowUpRight className="w-4 h-4 text-text-secondary/50 group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0 mt-1" />
+            <ArrowUpRight className="w-4 h-4 text-text-secondary/50 group-hover:text-primary group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0 mt-0.5" />
           </div>
 
           {/* Stats Bar */}
-          <div className="text-xs font-semibold text-text-secondary flex items-center gap-2 mb-5">
-            <span className="inline-flex items-center gap-1.5">
+          <div className="text-xs font-semibold text-text-secondary flex flex-wrap items-center gap-x-2 gap-y-1 mb-4 sm:mb-5">
+            <span className="inline-flex items-center gap-1.5 shrink-0">
               <Users className="w-3.5 h-3.5 opacity-70" />
               {member_count} {member_count === 1 ? 'member' : 'members'}
             </span>
             <span className="opacity-40">•</span>
-            <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 shrink-0">
               <Link2 className="w-3.5 h-3.5 opacity-70" />
               {link_count} {link_count === 1 ? 'post' : 'posts'}
             </span>
@@ -92,7 +92,7 @@ export default function BoardCard({
 
           {/* Member Avatars Stack */}
           <div className="mt-auto flex items-center justify-between pt-3 border-t border-border-subtle/50">
-            <div className="flex -space-x-2">
+            <div className="flex -space-x-2 shrink-0">
               {members && members.length > 0 ? (
                 members.slice(0, 3).map((m, i) => (
                   <div
@@ -116,7 +116,7 @@ export default function BoardCard({
               )}
             </div>
 
-            <span className="text-xs font-extrabold text-primary group-hover:underline">
+            <span className="text-xs font-extrabold text-primary group-hover:underline shrink-0">
               Enter Board →
             </span>
           </div>

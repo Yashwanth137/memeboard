@@ -79,10 +79,10 @@ export default function PostGrid({
   }, [links]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4 md:gap-6">
       {/* Date Grouped Visual Archive */}
       {dateGroups.map((group) => (
-        <section key={group.label} className="flex flex-col gap-2.5">
+        <section key={group.label} className="flex flex-col gap-2 md:gap-2.5">
           {/* Section Date Anchor Header */}
           <div className="flex items-center gap-3 pt-1">
             <h2 className="text-xs font-black uppercase tracking-wider text-text-primary/90">
@@ -94,8 +94,8 @@ export default function PostGrid({
             </span>
           </div>
 
-          {/* High Density Grid (4-5 cards across desktop) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-3 sm:gap-3.5">
+          {/* High Density Grid (2 items in a row on mobile < 768px, 3-5 cards across tablet/desktop) */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-2.5 md:gap-3.5">
             {group.items.map((link) => (
               <PostCard
                 key={link.id}
