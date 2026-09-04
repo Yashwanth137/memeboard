@@ -45,14 +45,12 @@ function LoginForm() {
           return;
         }
 
-        // Check if username is already taken via public view
-        const { data: existingUser } = await supabase
-          .from('public_profiles')
-          .select('id')
-          .eq('username', cleanUsername)
-          .maybeSingle();
+        // Check if username is already taken via narrow boolean RPC
+        const { data: isAvailable } = await supabase.rpc('is_username_available', {
+          p_username: cleanUsername,
+        });
 
-        if (existingUser) {
+        if (isAvailable === false) {
           setMessage({
             type: 'error',
             text: `Username @${cleanUsername} is already taken. Please choose another.`,
@@ -73,13 +71,17 @@ function LoginForm() {
 
         if (error) throw error;
 
-        // Upsert initial profile
-        if (data.user) {
-          await supabase.from('profiles').upsert({
-            id: data.user.id,
-            email: data.user.email,
-            username: cleanUsername,
-          });
+        // Upsert initial profile (if session exists, as safety net; handle_new_user trigger creates it automatically)
+        if (data.session && data.user) {
+          try {
+            await supabase.from('profiles').upsert({
+              id: data.user.id,
+              email: data.user.email,
+              username: cleanUsername,
+            });
+          } catch (e) {
+            console.warn('Profile upsert fallback skipped (created by trigger):', e);
+          }
         }
 
         if (data.session) {

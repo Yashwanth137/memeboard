@@ -13,11 +13,16 @@ export default function EmptyBoards({ onCreateClick }: EmptyBoardsProps) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="flex-1 flex flex-col items-center justify-center text-center max-w-md mx-auto py-16 sm:py-24"
+      className="flex-1 flex flex-col items-center justify-center text-center max-w-lg mx-auto py-12 sm:py-20"
     >
       {/* Architectural SVG Portal Illustration */}
-      <div className="w-56 h-56 mb-6 relative">
-        <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-xl">
+      <div className="w-52 h-52 mb-6 relative">
+        <svg
+          viewBox="0 0 200 200"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-full h-full drop-shadow-xl"
+        >
           {/* Background Arch Wall */}
           <path
             d="M40 160V100C40 66.8629 66.8629 40 100 40C133.137 40 160 66.8629 160 100V160H40Z"
@@ -78,16 +83,17 @@ export default function EmptyBoards({ onCreateClick }: EmptyBoardsProps) {
       <h3 className="text-2xl font-extrabold text-text-primary tracking-tight mb-2.5">
         Nothing here yet.
       </h3>
-      <p className="text-sm font-medium text-text-secondary leading-relaxed mb-8">
-        Create your first Board and start collecting things with your group.
+      <p className="text-sm font-medium text-text-secondary leading-relaxed mb-8 max-w-sm">
+        Create your first Board and start collecting memes and links with your group.
       </p>
 
+      {/* Primary Action Button */}
       <button
         onClick={onCreateClick}
         className="px-6 py-3 rounded-2xl bg-primary hover:opacity-90 active:scale-95 text-white text-sm font-extrabold transition-all shadow-md flex items-center gap-2"
       >
         <Plus className="w-4 h-4" />
-        Create your first Board
+        <span>Create your first Board</span>
       </button>
     </motion.div>
   );

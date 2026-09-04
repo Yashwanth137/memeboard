@@ -4,7 +4,8 @@ export const TELEGRAM_BOT_TOKEN =
   process.env.TELEGRAM_BOT_KEY ||
   '';
 
-export const TELEGRAM_BOT_USERNAME = 'memeboard_bot';
+export const TELEGRAM_BOT_USERNAME =
+  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'memeboard_bot';
 
 export function extractUrls(text: string): string[] {
   if (!text) return [];

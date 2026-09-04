@@ -297,6 +297,20 @@ export interface Database {
       };
     };
     Functions: {
+      is_username_available: {
+        Args: {
+          p_username: string;
+        };
+        Returns: boolean;
+      };
+      generate_telegram_link_code: {
+        Args: Record<string, never>;
+        Returns: string;
+      };
+      unlink_telegram_account: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
       link_telegram_account: {
         Args: {
           p_code: string;

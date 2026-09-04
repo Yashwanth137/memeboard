@@ -51,7 +51,32 @@ export default function JoinBoardModal({
         try {
           const u = new URL(inputVal.startsWith('http') ? inputVal : `https://${inputVal}`);
           token = u.searchParams.get('token') || '';
-        } catch {}
+        } catch {
+          const match = inputVal.match(/[?&]token=([^&#\s]+)/);
+          if (match) token = match[1];
+        }
+      }
+
+      // Check if user is already a member of this board
+      const { data: bData } = await supabase
+        .from('boards')
+        .select('id, slug')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (bData) {
+        const { data: member } = await supabase
+          .from('board_members')
+          .select('user_id')
+          .eq('board_id', bData.id)
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (member) {
+          onClose();
+          router.push(`/b/${slug}`);
+          return;
+        }
       }
 
       if (token) {
@@ -113,7 +138,7 @@ export default function JoinBoardModal({
               <h3 className="text-2xl font-extrabold text-text-primary tracking-tight">Join a Board</h3>
             </div>
             <p className="text-sm text-text-secondary mb-6 font-medium">
-              Enter an invite link or Board code to join your group's collection.
+              Enter an invite link or board code to join or open a collection.
             </p>
 
             {error && (
@@ -126,12 +151,12 @@ export default function JoinBoardModal({
             <form onSubmit={handleJoin} className="flex flex-col gap-4 relative z-10">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-1.5">
-                  Board Link or Code
+                  Board Invite Link or Code
                 </label>
                 <input
                   type="text"
                   className="w-full px-4 py-3 bg-surface-elevated border border-border-subtle rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition-all font-semibold placeholder-text-secondary/50 text-sm shadow-xs"
-                  placeholder="e.g. memeboard.app/b/the-boys or the-boys"
+                  placeholder="e.g. memeboard.app/b/the-boys?token=... or the-boys"
                   value={inputVal}
                   onChange={(e) => setInputVal(e.target.value)}
                   required

@@ -36,16 +36,19 @@ grant execute on function app_private.is_board_owner(uuid, uuid) to authenticate
 alter table public.profiles add column if not exists telegram_link_code_expires_at timestamptz;
 alter table public.profiles enable row level security;
 
--- Drop insecure open read policy if exists
+-- Drop all existing profile policies (idempotent)
 drop policy if exists "Allow read profiles" on public.profiles;
+drop policy if exists "Allow reading profiles of board members" on public.profiles;
 drop policy if exists "Allow user to read own full profile" on public.profiles;
 drop policy if exists "Allow user to update own profile" on public.profiles;
-drop policy if exists "Allow reading profiles of board members" on public.profiles;
+drop policy if exists "Allow user to insert own profile" on public.profiles;
 
--- Strict row policy: User can read their own profile, or fellow members on shared boards
+-- RLS Policy 1: User can read their own profile row (all columns they are granted)
 create policy "Allow user to read own full profile" on public.profiles
   for select using (auth.uid() = id);
 
+-- RLS Policy 2: Board-member scoped read — co-members on shared boards
+-- Combined with column-level grants below, this only exposes (id, username, created_at)
 create policy "Allow reading profiles of board members" on public.profiles
   for select using (
     exists (
@@ -55,18 +58,28 @@ create policy "Allow reading profiles of board members" on public.profiles
     )
   );
 
--- User can update only their own profile
+-- RLS Policy 3: User can update only their own profile
 create policy "Allow user to update own profile" on public.profiles
   for update using (auth.uid() = id);
 
--- Table privilege grants
-grant select on public.profiles to authenticated;
-grant update (username) on public.profiles to authenticated;
+-- RLS Policy 4: User can insert their own profile (signup safety net)
+create policy "Allow user to insert own profile" on public.profiles
+  for insert with check (auth.uid() = id);
+
+-- Column-level privilege grants: authenticated users can ONLY read these 3 columns.
+-- Private columns (email, telegram_user_id, telegram_username, telegram_link_code,
+-- telegram_link_code_expires_at) are unreachable even on RLS-visible co-member rows.
+-- PostgreSQL enforces: "If no table-level SELECT is granted, only the explicitly
+-- granted columns may be selected."
+revoke all on public.profiles from authenticated;
+grant select (id, username, created_at) on public.profiles to authenticated;
+grant update (username, email) on public.profiles to authenticated;
+grant insert (id, email, username) on public.profiles to authenticated;
 
 -- Drop obsolete public function to satisfy Supabase Linter 0029
 drop function if exists public.get_member_profiles(uuid[]) cascade;
 
--- Member Profile Resolver in app_private schema (never exposed via PostgREST)
+-- Member Profile Resolver in app_private schema (Internal backend only, unexposed to PostgREST)
 create or replace function app_private.get_member_profiles(p_user_ids uuid[])
 returns table(id uuid, username text) as $$
   select p.id, p.username
@@ -74,14 +87,37 @@ returns table(id uuid, username text) as $$
   where p.id = any(p_user_ids);
 $$ language sql security definer set search_path = public, pg_temp;
 
-revoke execute on function app_private.get_member_profiles(uuid[]) from public, anon;
-grant execute on function app_private.get_member_profiles(uuid[]) to authenticated, service_role;
+revoke execute on function app_private.get_member_profiles(uuid[]) from public, anon, authenticated;
+grant execute on function app_private.get_member_profiles(uuid[]) to service_role;
 
--- Create a secure public view with security_invoker = true (satisfies linter rule 0010_security_definer_view)
+-- Safe Member Display View: SECURITY INVOKER (satisfies Supabase Linter 0010)
+-- Row filtering handled by profiles RLS (own row + board co-members).
+-- Column restriction handled by column-level grants (id, username, created_at only).
+-- The view itself projects only safe columns — no email, no Telegram fields.
+drop view if exists public.public_profiles cascade;
+
 create or replace view public.public_profiles with (security_invoker = true) as
-  select id, username, created_at from public.profiles;
+  select p.id, p.username, p.created_at
+  from public.profiles p;
 
-grant select on public.public_profiles to anon, authenticated, service_role;
+-- Only authenticated users and service_role need public_profiles.
+-- No product requirement for anonymous profile access.
+grant select on public.public_profiles to authenticated, service_role;
+
+-- Foreign key integrity: link board_members.user_id -> public.profiles(id)
+-- Verified: 0 orphan board_members.user_id rows exist
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.table_constraints
+    where constraint_name = 'board_members_user_id_profiles_fkey'
+    and table_name = 'board_members'
+  ) then
+    alter table public.board_members
+      add constraint board_members_user_id_profiles_fkey
+      foreign key (user_id) references public.profiles(id) on delete cascade;
+  end if;
+end $$;
 
 -- 2. Boards Table: Member/Owner-only Access
 alter table public.boards enable row level security;
@@ -319,7 +355,7 @@ returns trigger as $$
 declare
   generated_code text;
 begin
-  generated_code := encode(gen_random_bytes(6), 'hex');
+  generated_code := encode(extensions.gen_random_bytes(6), 'hex');
   insert into public.profiles (id, email, username, telegram_link_code, telegram_link_code_expires_at)
   values (
     new.id,
@@ -332,7 +368,7 @@ begin
   set email = excluded.email;
   return new;
 end;
-$$ language plpgsql security definer set search_path = public, pg_temp;
+$$ language plpgsql security definer set search_path = public, extensions, pg_temp;
 
 create or replace function public.handle_new_board()
 returns trigger as $$
@@ -395,7 +431,7 @@ begin
     raise exception 'Authentication required';
   end if;
 
-  v_code := encode(gen_random_bytes(6), 'hex');
+  v_code := encode(extensions.gen_random_bytes(6), 'hex');
 
   update public.profiles
   set telegram_link_code = v_code,
@@ -404,7 +440,7 @@ begin
 
   return v_code;
 end;
-$$ language plpgsql security definer set search_path = public, pg_temp;
+$$ language plpgsql security definer set search_path = public, extensions, pg_temp;
 
 create or replace function public.unlink_telegram_account()
 returns boolean as $$
@@ -480,6 +516,7 @@ drop function if exists public.telegram_submit_link(bigint, text) cascade;
 
 -- Internal trigger functions: prohibit direct RPC execution by any client role
 revoke execute on function public.handle_new_user() from public, anon, authenticated;
+grant execute on function public.handle_new_user() to supabase_auth_admin, service_role;
 revoke execute on function public.handle_new_board() from public, anon, authenticated;
 
 -- Rate limiter RPC: internal utility called via service_role only
@@ -502,3 +539,22 @@ grant execute on function public.unlink_telegram_account() to authenticated, ser
 
 revoke execute on function public.telegram_submit_link(bigint, text, text, text, uuid) from public, anon, authenticated;
 grant execute on function public.telegram_submit_link(bigint, text, text, text, uuid) to service_role;
+
+-- Anonymous username availability RPC (narrow, boolean-only, no table scanning)
+create or replace function public.is_username_available(p_username text)
+returns boolean as $$
+begin
+  if p_username is null or length(trim(p_username)) < 3 then
+    return false;
+  end if;
+
+  return not exists (
+    select 1 from public.profiles
+    where lower(username) = lower(trim(p_username))
+  );
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+revoke execute on function public.is_username_available(text) from public;
+grant execute on function public.is_username_available(text) to anon, authenticated, service_role;
+

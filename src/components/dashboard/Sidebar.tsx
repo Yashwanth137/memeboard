@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { motion } from 'framer-motion';
 import {
   LayoutGrid,
@@ -16,6 +17,8 @@ import {
   User as UserIcon,
   Users,
   X,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import ConnectionStatus from './ConnectionStatus';
 
@@ -71,7 +74,17 @@ export default function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const isMyBoardsActive = pathname === '/boards';
+  const isSettingsActive = pathname === '/settings';
   const [showAllMembersModal, setShowAllMembersModal] = useState(false);
+
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const currentTheme = theme === 'system' ? resolvedTheme : theme;
+  const isDark = mounted ? currentTheme === 'dark' : false;
 
   // Active board name fallback if not passed directly
   const currentBoard = boards.find((b) => b.slug === activeSlug);
@@ -307,24 +320,46 @@ export default function Sidebar({
             {/* Settings & Profile Area */}
             <div className="space-y-0.5">
               {/* Settings Trigger */}
-              <button
-                type="button"
-                onClick={onSettingsClick}
-                className={`w-full flex items-center gap-2 px-2 py-1 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors ${
-                  collapsed ? 'justify-center px-0' : ''
-                }`}
+              <Link
+                href="/settings"
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  isSettingsActive
+                    ? 'bg-primary/10 text-primary font-bold shadow-2xs'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-surface-elevated'
+                } ${collapsed ? 'justify-center px-0' : ''}`}
                 title="Settings"
               >
-                <Settings className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                <Settings className={`w-3.5 h-3.5 shrink-0 ${isSettingsActive ? 'text-primary' : 'opacity-70'}`} />
                 {!collapsed && <span>Settings</span>}
+              </Link>
+
+              {/* Theme Toggle Trigger */}
+              <button
+                type="button"
+                onClick={() => setTheme(isDark ? 'light' : 'dark')}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors ${
+                  collapsed ? 'justify-center px-0' : ''
+                }`}
+                title={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+                aria-label="Toggle theme"
+              >
+                {isDark ? (
+                  <Sun className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                ) : (
+                  <Moon className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
+                )}
+                {!collapsed && (
+                  <span className="flex-1 text-left">
+                    {isDark ? 'Light Theme' : 'Dark Theme'}
+                  </span>
+                )}
               </button>
 
               {/* Profile Bar with Sign Out button */}
               {!collapsed ? (
                 <div className="flex items-center justify-between p-1.5 rounded-lg bg-surface-elevated/70 border border-border-subtle/50 mt-0.5">
-                  <button
-                    type="button"
-                    onClick={onSettingsClick}
+                  <Link
+                    href="/settings"
                     className="flex items-center gap-2 overflow-hidden hover:opacity-80 transition-opacity text-left min-w-0 flex-1 group"
                     title="Open profile & settings"
                   >
@@ -334,7 +369,7 @@ export default function Sidebar({
                     <span className="text-[11px] font-bold text-text-primary truncate">
                       @{username || 'user'}
                     </span>
-                  </button>
+                  </Link>
 
                   <button
                     onClick={onSignOut}
@@ -347,14 +382,13 @@ export default function Sidebar({
                 </div>
               ) : (
                 <div className="space-y-0.5">
-                  <button
-                    type="button"
-                    onClick={onSettingsClick}
+                  <Link
+                    href="/settings"
                     className="w-full flex items-center justify-center p-1.5 rounded-lg text-text-secondary hover:text-text-primary hover:bg-surface-elevated transition-colors"
                     title={`@${username} (Profile)`}
                   >
                     <UserIcon className="w-3.5 h-3.5" />
-                  </button>
+                  </Link>
                   <button
                     onClick={onSignOut}
                     className="w-full flex items-center justify-center p-1.5 rounded-lg text-text-secondary hover:text-red-500 hover:bg-red-500/10 transition-colors"

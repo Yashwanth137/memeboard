@@ -51,8 +51,8 @@ export default function Navbar() {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  // Remove global navbar on board routes so sidebar is primary navigation
-  if (pathname?.startsWith('/b/')) {
+  // Remove global navbar on boards, board routes, and settings so sidebar is primary navigation
+  if (pathname?.startsWith('/b/') || pathname === '/boards' || pathname === '/settings') {
     return null;
   }
 

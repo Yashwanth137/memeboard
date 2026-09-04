@@ -21,40 +21,42 @@ export default function ShareBoardModal({
 }: ShareBoardModalProps) {
   const [copied, setCopied] = useState(false);
   const [loadingToken, setLoadingToken] = useState(false);
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://memeboard.app';
-  const [shareUrl, setShareUrl] = useState(`${origin}/b/${boardSlug}/join`);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState('');
 
   // Generate secure invite token on open
+  const fetchInvite = React.useCallback(async () => {
+    setLoadingToken(true);
+    setInviteError(null);
+    try {
+      const res = await fetch(`/api/boards/${boardSlug}/invites`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.inviteUrl) {
+          setShareUrl(data.inviteUrl);
+        } else {
+          setInviteError('Failed to generate invite link');
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setInviteError(errData.error || 'Failed to generate invite link');
+      }
+    } catch {
+      setInviteError('Network error. Failed to generate invite link.');
+    } finally {
+      setLoadingToken(false);
+    }
+  }, [boardSlug]);
+
   React.useEffect(() => {
     if (!isOpen) return;
-
-    let mounted = true;
-    async function fetchInvite() {
-      setLoadingToken(true);
-      try {
-        const res = await fetch(`/api/boards/${boardSlug}/invites`, {
-          method: 'POST',
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (mounted && data.inviteUrl) {
-            setShareUrl(data.inviteUrl);
-          }
-        }
-      } catch {
-        // Fall back to baseline join URL
-      } finally {
-        if (mounted) setLoadingToken(false);
-      }
-    }
-
     fetchInvite();
-    return () => {
-      mounted = false;
-    };
-  }, [isOpen, boardSlug]);
+  }, [isOpen, fetchInvite]);
 
   const handleCopy = async () => {
+    if (!shareUrl || loadingToken) return;
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
@@ -66,6 +68,7 @@ export default function ShareBoardModal({
   };
 
   const handleNativeShare = async () => {
+    if (!shareUrl || loadingToken) return;
     if (navigator.share) {
       try {
         await navigator.share({
@@ -135,34 +138,53 @@ export default function ShareBoardModal({
               <label className="block text-xs font-extrabold text-text-primary uppercase tracking-wider">
                 Board Invite Link
               </label>
-              <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-surface-elevated border border-border-subtle shadow-inner">
-                <input
-                  type="text"
-                  readOnly
-                  value={shareUrl}
-                  className="flex-1 px-3 py-2 bg-transparent text-text-primary text-xs font-mono font-medium focus:outline-none select-all truncate"
-                />
-                <button
-                  onClick={handleCopy}
-                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 shrink-0 active:scale-95 ${
-                    copied
-                      ? 'bg-emerald-500 text-white'
-                      : 'bg-primary text-white hover:opacity-90 shadow-xs'
-                  }`}
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span>Copied!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copy Link</span>
-                    </>
-                  )}
-                </button>
-              </div>
+
+              {inviteError ? (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-red-600 dark:text-red-400">{inviteError}</p>
+                  <button
+                    type="button"
+                    onClick={fetchInvite}
+                    className="px-3 py-1 rounded-lg bg-red-500 text-white text-xs font-bold hover:opacity-90 transition-opacity"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-surface-elevated border border-border-subtle shadow-inner">
+                  <input
+                    type="text"
+                    readOnly
+                    value={loadingToken ? 'Generating secure invite link...' : shareUrl}
+                    className={`flex-1 px-3 py-2 bg-transparent text-text-primary text-xs font-mono font-medium focus:outline-none select-all truncate ${
+                      loadingToken ? 'opacity-60 italic' : ''
+                    }`}
+                  />
+                  <button
+                    onClick={handleCopy}
+                    disabled={loadingToken || !shareUrl}
+                    className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1.5 shrink-0 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${
+                      copied
+                        ? 'bg-emerald-500 text-white'
+                        : 'bg-primary text-white hover:opacity-90 shadow-xs'
+                    }`}
+                  >
+                    {loadingToken ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : copied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
 
               <p className="text-[11px] text-text-secondary leading-relaxed pt-1">
                 Anyone with this link can view the collection and post links to this board.

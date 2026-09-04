@@ -37,10 +37,16 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
+    let body: any = null;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
     const token = body?.token;
 
-    if (!token || typeof token !== 'string') {
+    if (!token || typeof token !== 'string' || !token.trim()) {
       return NextResponse.json({ error: 'Invite token is required' }, { status: 400 });
     }
 
