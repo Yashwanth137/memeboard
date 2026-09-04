@@ -10,7 +10,16 @@ import { Zap } from 'lucide-react';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/boards';
+
+  // Strictly sanitize redirect destination to prevent open redirect vulnerabilities
+  const rawRedirect = searchParams.get('redirect') || '/boards';
+  const redirectUrl =
+    rawRedirect.startsWith('/') &&
+    !rawRedirect.startsWith('//') &&
+    !rawRedirect.includes('\\') &&
+    !rawRedirect.includes('://')
+      ? rawRedirect
+      : '/boards';
 
   const [supabase] = useState(() => createClient());
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
@@ -19,6 +28,14 @@ function LoginForm() {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+
+  // Surface auth errors passed via URL parameters (e.g. from /auth/callback)
+  useEffect(() => {
+    const authErr = searchParams.get('error');
+    if (authErr) {
+      setMessage({ type: 'error', text: authErr });
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -59,6 +76,10 @@ function LoginForm() {
           return;
         }
 
+        const callbackUrl = typeof window !== 'undefined'
+          ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectUrl)}`
+          : undefined;
+
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -66,6 +87,7 @@ function LoginForm() {
             data: {
               username: cleanUsername,
             },
+            emailRedirectTo: callbackUrl,
           },
         });
 
@@ -90,7 +112,7 @@ function LoginForm() {
         } else {
           setMessage({
             type: 'success',
-            text: 'Account created! You can now sign in with your credentials.',
+            text: 'Account created! Please check your email to confirm your account before signing in.',
           });
           setAuthMode('signin');
         }

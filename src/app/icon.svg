@@ -14,36 +14,14 @@
       <stop offset="40%" stop-color="#FFF4B8" stop-opacity="0.3" />
       <stop offset="100%" stop-color="#F59E0B" stop-opacity="0" />
     </linearGradient>
-
-    <!-- Ambient Glow Filter -->
-    <filter id="thunder-glow" x="-20%" y="-20%" width="140%" height="140%" filterUnits="userSpaceOnUse">
-      <feGaussianBlur stdDeviation="16" result="blur" />
-      <feColorMatrix type="matrix" values="
-        1 0 0 0 0.96
-        0 0.7 0 0 0.62
-        0 0 0.1 0 0.04
-        0 0 0 0.5 0" />
-      <feMerge>
-        <feMergeNode />
-        <feMergeNode in="SourceGraphic" />
-      </feMerge>
-    </filter>
   </defs>
-
-  <!-- Ambient Glow Behind the Bolt -->
-  <polygon
-    points="284,40 104,272 252,272 228,472 408,240 260,240"
-    fill="url(#thunder-gradient)"
-    opacity="0.4"
-    filter="url(#thunder-glow)"
-  />
 
   <!-- Main Electric Thunder Bolt -->
   <polygon
     points="284,40 104,272 252,272 228,472 408,240 260,240"
     fill="url(#thunder-gradient)"
     stroke="url(#thunder-gradient)"
-    stroke-width="20"
+    stroke-width="24"
     stroke-linejoin="round"
   />
 

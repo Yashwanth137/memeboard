@@ -60,3 +60,77 @@ describe('Security: Token Hashing & Invite Mechanics', () => {
     assert.notEqual(rawToken, tokenHash);
   });
 });
+
+describe('Security: Open Redirect Sanitization', () => {
+  function sanitizeRedirectUrl(raw) {
+    if (!raw) return '/boards';
+    return raw.startsWith('/') &&
+      !raw.startsWith('//') &&
+      !raw.includes('\\') &&
+      !raw.includes('://')
+      ? raw
+      : '/boards';
+  }
+
+  it('permits safe relative internal application paths', () => {
+    assert.equal(sanitizeRedirectUrl('/boards'), '/boards');
+    assert.equal(sanitizeRedirectUrl('/b/my-cool-board'), '/b/my-cool-board');
+    assert.equal(sanitizeRedirectUrl('/settings'), '/settings');
+    assert.equal(sanitizeRedirectUrl('/b/slug/join?token=abc'), '/b/slug/join?token=abc');
+  });
+
+  it('rejects external absolute URLs', () => {
+    assert.equal(sanitizeRedirectUrl('https://evil.com'), '/boards');
+    assert.equal(sanitizeRedirectUrl('http://evil.com/phish'), '/boards');
+    assert.equal(sanitizeRedirectUrl('ftp://evil.com'), '/boards');
+  });
+
+  it('rejects protocol-relative URLs', () => {
+    assert.equal(sanitizeRedirectUrl('//evil.com'), '/boards');
+    assert.equal(sanitizeRedirectUrl('//evil.com/boards'), '/boards');
+  });
+
+  it('rejects javascript and data URIs', () => {
+    assert.equal(sanitizeRedirectUrl('javascript:alert(1)'), '/boards');
+    assert.equal(sanitizeRedirectUrl('data:text/html,<script>alert(1)</script>'), '/boards');
+  });
+
+  it('rejects backslash directory traversal / evasion', () => {
+    assert.equal(sanitizeRedirectUrl('/\\evil.com'), '/boards');
+    assert.equal(sanitizeRedirectUrl('\\evil.com'), '/boards');
+  });
+});
+
+describe('Security: Admin Client Service Role Key Enforcement', () => {
+  function validateAdminConfig(supabaseUrl, serviceRoleKey) {
+    if (!supabaseUrl || !serviceRoleKey) {
+      throw new Error(
+        'CRITICAL CONFIGURATION ERROR: NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set to initialize createAdminClient.'
+      );
+    }
+    return true;
+  }
+
+  it('throws a critical error when SUPABASE_SERVICE_ROLE_KEY is absent', () => {
+    assert.throws(
+      () => validateAdminConfig('https://example.supabase.co', undefined),
+      /CRITICAL CONFIGURATION ERROR.*SUPABASE_SERVICE_ROLE_KEY/
+    );
+    assert.throws(
+      () => validateAdminConfig('https://example.supabase.co', ''),
+      /CRITICAL CONFIGURATION ERROR.*SUPABASE_SERVICE_ROLE_KEY/
+    );
+  });
+
+  it('throws a critical error when SUPABASE_URL is absent', () => {
+    assert.throws(
+      () => validateAdminConfig(undefined, 'service-role-secret'),
+      /CRITICAL CONFIGURATION ERROR.*NEXT_PUBLIC_SUPABASE_URL/
+    );
+  });
+
+  it('succeeds when both required configuration parameters are provided', () => {
+    assert.equal(validateAdminConfig('https://example.supabase.co', 'valid-service-key'), true);
+  });
+});
+

@@ -73,15 +73,16 @@ function SettingsContent() {
   const isWhatsAppConnected = Boolean(
     (workspace?.profile as any)?.whatsapp_phone_number
   );
+  const user = workspace?.user;
   const username =
     workspace?.profile?.username ||
-    workspace?.user?.email?.split('@')[0] ||
+    user?.email?.split('@')[0] ||
     'user';
-  const email = workspace?.user?.email || '';
+  const email = user?.email || '';
 
   // Format member creation date safely
   const memberSince = (() => {
-    const rawDate = workspace?.profile?.created_at || workspace?.user?.created_at;
+    const rawDate = workspace?.profile?.created_at || user?.created_at;
     if (!rawDate || !mounted) return 'Sep 4, 2026';
     try {
       return new Date(rawDate).toLocaleDateString('en-US', {
@@ -341,10 +342,23 @@ function SettingsContent() {
 
           <div className="pt-4 mt-6 border-t border-border-subtle/50 flex items-center justify-between text-xs text-text-secondary">
             <span>Account Security</span>
-            <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
-              Active & Verified
-            </span>
+            {user?.email_confirmed_at ? (
+              <span
+                suppressHydrationWarning
+                className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />
+                Active & Verified
+              </span>
+            ) : (
+              <span
+                suppressHydrationWarning
+                className="font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5"
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]" />
+                Unverified Email
+              </span>
+            )}
           </div>
         </div>
 

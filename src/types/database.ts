@@ -17,6 +17,7 @@ export interface Database {
           telegram_user_id: number | null;
           telegram_username: string | null;
           telegram_link_code: string | null;
+          telegram_link_code_expires_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -26,6 +27,7 @@ export interface Database {
           telegram_user_id?: number | null;
           telegram_username?: string | null;
           telegram_link_code?: string | null;
+          telegram_link_code_expires_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -35,6 +37,7 @@ export interface Database {
           telegram_user_id?: number | null;
           telegram_username?: string | null;
           telegram_link_code?: string | null;
+          telegram_link_code_expires_at?: string | null;
           created_at?: string;
         };
         Relationships: [
@@ -328,6 +331,22 @@ export interface Database {
           p_category_id?: string | null;
         };
         Returns: Json;
+      };
+      join_board_with_token: {
+        Args: {
+          p_slug: string;
+          p_token_hash: string;
+          p_user_id?: string | null;
+        };
+        Returns: Json;
+      };
+      check_rate_limit: {
+        Args: {
+          p_key: string;
+          p_limit: number;
+          p_window_seconds: number;
+        };
+        Returns: boolean;
       };
     };
     Enums: {

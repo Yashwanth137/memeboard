@@ -7,9 +7,14 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Memeboard — Persistent Content Layer for Friends',
+  title: 'Memeboarder',
   description:
-    'A social web platform for friend groups to collect and revisit memes, videos, and links shared across group chats.',
+    'Memeboarder is a social media platform for friend groups to collect and revisit memes, videos, and links shared across group chats.',
+  icons: {
+    icon: '/icon.svg',
+    shortcut: '/vercel.svg',
+    apple: '/icon.svg',
+  },
 };
 
 export default function RootLayout({
