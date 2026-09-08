@@ -9,6 +9,12 @@ import BoardCard from '@/components/dashboard/BoardCard';
 import CreateBoardModal from '@/components/dashboard/CreateBoardModal';
 import EmptyBoards from '@/components/dashboard/EmptyBoards';
 
+import {
+  getBoardsCache,
+  setBoardsCache,
+  invalidateBoardsCache,
+} from '@/lib/cache/boards-cache';
+
 interface Board {
   id: string;
   name: string;
@@ -123,66 +129,125 @@ export default function DashboardPage() {
         }
         if (active) setUser(user);
 
-        const { data: memberRows } = await supabase
+        // 1. Instant Cache Hydration (0ms render on back-navigation)
+        const cached = getBoardsCache(user.id);
+        if (cached && active) {
+          setBoards(cached);
+          setLoading(false);
+        }
+
+        // 2. Fetch fresh board memberships
+        const { data: memberRows, error: memberErr } = await supabase
           .from('board_members')
           .select('role, boards ( id, name, slug, owner_id, created_at )')
           .eq('user_id', user.id);
 
-        if (memberRows && active) {
-          const boardList: Board[] = [];
-          for (const row of memberRows) {
-            const b = (row as any).boards;
-            if (b) {
-              const { count: memberCount } = await supabase
+        if (memberErr || !memberRows) {
+          if (!cached && active) {
+            setBoards([]);
+            setLoading(false);
+          }
+          return;
+        }
+
+        const validBoards = memberRows
+          .filter((row: any) => Boolean(row.boards))
+          .map((row: any) => ({
+            role: row.role,
+            board: row.boards as { id: string; name: string; slug: string; owner_id: string; created_at: string },
+          }));
+
+        if (validBoards.length === 0) {
+          if (active) {
+            setBoards([]);
+            setLoading(false);
+          }
+          setBoardsCache(user.id, []);
+          return;
+        }
+
+        // 3. Parallelize count and thumbnail queries across all boards concurrently
+        const boardDetails = await Promise.all(
+          validBoards.map(async ({ role, board: b }) => {
+            const [memberRes, linkRes, thumbsRes, membersRes] = await Promise.all([
+              supabase
                 .from('board_members')
                 .select('*', { count: 'exact', head: true })
-                .eq('board_id', b.id);
-
-              const { count: linkCount } = await supabase
+                .eq('board_id', b.id),
+              supabase
                 .from('links')
                 .select('*', { count: 'exact', head: true })
-                .eq('board_id', b.id);
-
-              const { data: recentLinks } = await supabase
+                .eq('board_id', b.id),
+              supabase
                 .from('links')
                 .select('thumbnail_url')
                 .eq('board_id', b.id)
                 .not('thumbnail_url', 'is', null)
                 .neq('thumbnail_url', '')
                 .order('created_at', { ascending: false })
-                .limit(4);
-
-              const { data: membersData } = await supabase
+                .limit(4),
+              supabase
                 .from('board_members')
                 .select('user_id')
                 .eq('board_id', b.id)
-                .limit(5);
+                .limit(5),
+            ]);
 
-              let memberUsernames: string[] = [];
-              if (membersData && membersData.length > 0) {
-                const uids = membersData.map((m) => m.user_id).filter(Boolean);
-                const { data: profs } = await supabase
-                  .from('public_profiles')
-                  .select('username')
-                  .in('id', uids);
-                memberUsernames =
-                  profs
-                    ?.map((p) => p.username)
-                    .filter((u): u is string => Boolean(u)) || [];
-              }
+            const memberUids =
+              membersRes.data
+                ?.map((m) => m.user_id)
+                .filter((u): u is string => Boolean(u)) || [];
 
-              boardList.push({
-                ...b,
-                role: row.role,
-                member_count: memberCount || 1,
-                link_count: linkCount || 0,
-                thumbnails: recentLinks?.map((l) => l.thumbnail_url).filter(Boolean) || [],
-                members: memberUsernames,
-              });
-            }
+            return {
+              ...b,
+              role,
+              member_count: memberRes.count || 1,
+              link_count: linkRes.count || 0,
+              thumbnails:
+                thumbsRes.data
+                  ?.map((l) => l.thumbnail_url)
+                  .filter((t): t is string => Boolean(t)) || [],
+              memberUids,
+            };
+          })
+        );
+
+        // 4. Batch fetch all member usernames across all boards in a single query
+        const allUserIds = Array.from(
+          new Set(boardDetails.flatMap((bd) => bd.memberUids))
+        );
+
+        const profilesMap = new Map<string, string>();
+        if (allUserIds.length > 0) {
+          const { data: profs } = await supabase
+            .from('public_profiles')
+            .select('id, username')
+            .in('id', allUserIds);
+
+          if (profs) {
+            profs.forEach((p) => {
+              if (p.id && p.username) profilesMap.set(p.id, p.username);
+            });
           }
-          if (active) setBoards(boardList);
         }
+
+        const finalBoardList: Board[] = boardDetails.map((bd) => {
+          const memberUsernames = bd.memberUids
+            .map((uid) => profilesMap.get(uid))
+            .filter((u): u is string => Boolean(u));
+
+          const { memberUids, ...rest } = bd;
+          return {
+            ...rest,
+            members: memberUsernames,
+          };
+        });
+
+        if (active) {
+          setBoards(finalBoardList);
+          setLoading(false);
+        }
+        setBoardsCache(user.id, finalBoardList);
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
@@ -210,6 +275,7 @@ export default function DashboardPage() {
           isOpen={showCreateModal}
           onClose={() => {
             setShowCreateModal(false);
+            invalidateBoardsCache(user.id);
             setRefreshKey((k) => k + 1);
           }}
           userId={user.id}

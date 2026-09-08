@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertCircle, ArrowRight, Compass } from 'lucide-react';
+import { invalidateBoardsCache } from '@/lib/cache/boards-cache';
+import { invalidateWorkspaceCache } from '@/lib/cache/workspace-cache';
 
 interface JoinBoardModalProps {
   isOpen: boolean;
@@ -89,6 +91,8 @@ export default function JoinBoardModal({
         if (!res.ok || !data.success) {
           throw new Error(data.error || 'Invalid or expired invite link');
         }
+        invalidateBoardsCache(userId);
+        invalidateWorkspaceCache();
         onClose();
         router.push(`/b/${slug}`);
       } else {

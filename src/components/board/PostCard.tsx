@@ -28,6 +28,7 @@ export default function PostCard({
   onToast,
 }: PostCardProps) {
   const [imgError, setImgError] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const platformInfo = detectPlatform(link.url);
   const isOwner = Boolean(currentUserId && link.submitted_by === currentUserId);
@@ -53,15 +54,17 @@ export default function PostCard({
 
   return (
     <motion.article
-      whileHover={{ y: -2 }}
+      whileHover={menuOpen ? undefined : { y: -2 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
       onClick={() => onOpenPreview(link)}
-      className="group bg-surface rounded-xl border border-border-subtle hover:border-primary/40 dark:hover:border-primary/50 shadow-2xs hover:shadow-md transition-all duration-200 overflow-hidden cursor-pointer flex flex-col relative"
+      className={`group bg-surface rounded-xl border border-border-subtle hover:border-primary/40 dark:hover:border-primary/50 shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col relative ${
+        menuOpen ? 'z-40' : 'z-10'
+      }`}
       id={`post-${link.id}`}
     >
       {/* Compact Media Region (aspect-[16/10] with contained image & blurred backdrop) */}
       {hasMedia ? (
-        <div className="relative w-full aspect-[16/10] bg-surface-elevated/90 overflow-hidden flex items-center justify-center border-b border-border-subtle/60">
+        <div className="relative w-full aspect-[16/10] bg-surface-elevated/90 overflow-hidden flex items-center justify-center border-b border-border-subtle/60 rounded-t-xl">
           {/* Subtle blurred ambient backdrop to fill letterbox areas */}
           <div
             className="absolute inset-0 bg-cover bg-center blur-lg opacity-25 dark:opacity-40 scale-125 pointer-events-none"
@@ -127,7 +130,7 @@ export default function PostCard({
           </div>
         </div>
       ) : (
-        <div className="aspect-[16/10] bg-surface-elevated/40 border-b border-border-subtle/60 flex flex-col items-center justify-center text-center gap-1 p-2 md:p-3 relative">
+        <div className="aspect-[16/10] bg-surface-elevated/40 border-b border-border-subtle/60 flex flex-col items-center justify-center text-center gap-1 p-2 md:p-3 relative rounded-t-xl">
           <div className="absolute top-1 left-1 md:top-1.5 md:left-1.5 z-20 px-1 md:px-1.5 py-0.5 rounded bg-black/65 backdrop-blur-md border border-white/10 text-white text-[8px] md:text-[9px] font-bold flex items-center gap-1 shadow-sm">
             <span
               className="w-1.5 h-1.5 rounded-full"
@@ -183,6 +186,8 @@ export default function PostCard({
               onCopyUrl={handleCopyUrl}
               onEdit={() => onEditPost(link)}
               onDelete={() => onDeletePost(link.id)}
+              open={menuOpen}
+              onOpenChange={setMenuOpen}
             />
           </div>
         </div>

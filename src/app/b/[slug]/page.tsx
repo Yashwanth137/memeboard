@@ -370,66 +370,6 @@ export default function BoardPage() {
               category: categories.find((c) => c.id === l.category_id) || null,
             };
           });
-
-          // Background auto-repair for links with unmigrated platform, content_type, or missing title/metadata
-          rawLinks.forEach((l) => {
-            const detected = detectPlatform(l.url);
-            const normalized = normalizePlatform(l.platform);
-            const isReddit = detected.id === 'reddit';
-            const isKnownVideo =
-              l.content_type === 'video' ||
-              detected.id === 'youtube' ||
-              detected.id === 'tiktok' ||
-              l.url.includes('v.redd.it') ||
-              Boolean(l.url.match(/\.(mp4|webm|mov|m3u8)(\?.*)?$/i)) ||
-              Boolean(l.url.match(/\/(reel|reels|shorts|clip|clips)\//i));
-
-            const needsRepair =
-              normalized !== l.platform ||
-              !l.title ||
-              (isReddit && l.content_type !== 'video') ||
-              (isKnownVideo && l.content_type !== 'video');
-
-            if (needsRepair) {
-              fetch(`/api/metadata?url=${encodeURIComponent(l.url)}`)
-                .then((r) => r.json())
-                .then((meta) => {
-                  if (meta && meta.title) {
-                    const resolvedType = meta.contentType || (isKnownVideo ? 'video' : l.content_type);
-                    
-                    // Immediately update local React state so UI reflects it without page reload
-                    setLinks((prev) =>
-                      prev.map((item) =>
-                        item.id === l.id
-                          ? {
-                              ...item,
-                              platform: detected.id,
-                              content_type: resolvedType,
-                              title: meta.title,
-                              description: meta.description || item.description,
-                              thumbnail_url: meta.thumbnailUrl || item.thumbnail_url,
-                            }
-                          : item
-                      )
-                    );
-
-                    supabase
-                      .from('links')
-                      .update({
-                        platform: detected.id,
-                        content_type: resolvedType,
-                        title: meta.title,
-                        description: meta.description || null,
-                        thumbnail_url: meta.thumbnailUrl || null,
-                        updated_at: new Date().toISOString(),
-                      })
-                      .eq('id', l.id)
-                      .then(() => {});
-                  }
-                })
-                .catch(() => {});
-            }
-          });
         }
 
         if (append) {

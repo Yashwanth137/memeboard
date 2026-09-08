@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client';
 import { slugify } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, AlertCircle, Sparkles } from 'lucide-react';
+import { invalidateBoardsCache } from '@/lib/cache/boards-cache';
+import { invalidateWorkspaceCache } from '@/lib/cache/workspace-cache';
 
 interface CreateBoardModalProps {
   isOpen: boolean;
@@ -61,6 +63,9 @@ export default function CreateBoardModal({
         { board_id: newBoard.id, user_id: userId, role: 'owner' },
         { onConflict: 'board_id,user_id', ignoreDuplicates: true }
       );
+
+      invalidateBoardsCache(userId);
+      invalidateWorkspaceCache();
 
       onClose();
       router.push(`/b/${newBoard.slug}`);

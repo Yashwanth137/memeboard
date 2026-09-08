@@ -42,3 +42,4 @@ yarn-error.log*
 next-env.d.ts
 
 current_status.md 
+gemini-context-export.md

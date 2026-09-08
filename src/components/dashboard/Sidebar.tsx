@@ -141,12 +141,18 @@ export default function Sidebar({
                 {!collapsed && (
                   <div className="px-2 mb-1.5 text-[10px] font-extrabold tracking-widest uppercase text-text-secondary/60 flex items-center justify-between shrink-0">
                     <span>Your Boards</span>
-                    <span className="text-[10px] font-bold text-text-secondary/70 bg-surface-elevated px-1.5 py-0.5 rounded border border-border-subtle/40">
+                    <span
+                      suppressHydrationWarning
+                      className="text-[10px] font-bold text-text-secondary/70 bg-surface-elevated px-1.5 py-0.5 rounded border border-border-subtle/40"
+                    >
                       {boards.length}
                     </span>
                   </div>
                 )}
-                <div className="space-y-0.5 max-h-[28vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                <div
+                  suppressHydrationWarning
+                  className="space-y-0.5 max-h-[28vh] overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                >
                   {boards.map((b) => {
                     const isActive = activeSlug === b.slug;
                     return (

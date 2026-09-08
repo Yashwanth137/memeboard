@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
+import { invalidateBoardsCache } from '@/lib/cache/boards-cache';
 
 function extractToken(input: string): string {
   const trimmed = input.trim();
@@ -116,6 +117,10 @@ function JoinBoardContent() {
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Invalid or expired invite link');
+      }
+
+      if (user?.id) {
+        invalidateBoardsCache(user.id);
       }
 
       router.push(`/b/${slug}`);

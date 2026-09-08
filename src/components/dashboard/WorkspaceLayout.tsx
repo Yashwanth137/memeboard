@@ -11,6 +11,12 @@ import CreateBoardModal from './CreateBoardModal';
 import JoinBoardModal from './JoinBoardModal';
 import ConnectionStatus from './ConnectionStatus';
 import ThemeToggle from '@/components/ThemeToggle';
+import {
+  getWorkspaceCache,
+  setWorkspaceCache,
+  invalidateWorkspaceCache,
+  fetchWorkspaceDataWithCache,
+} from '@/lib/cache/workspace-cache';
 
 export interface WorkspaceContextType {
   user: any;
@@ -58,77 +64,42 @@ export default function WorkspaceLayout({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
 
-  const fetchWorkspaceData = useCallback(async () => {
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-      setUser(user);
-
-      let prof: any = null;
-      try {
-        const res = await fetch('/api/me/profile');
-        if (res.ok) {
-          const json = await res.json();
-          prof = json.profile;
-        } else {
-          console.error('Failed to fetch profile via /api/me/profile:', res.status);
-        }
-      } catch (e) {
-        console.error('Could not fetch profile via /api/me/profile:', e);
-      }
-
-      // Resilient fallback to safe public_profiles if /api/me/profile is unreachable
-      if (!prof) {
-        try {
-          const { data: publicProf } = await supabase
-            .from('public_profiles')
-            .select('id, username, created_at')
-            .eq('id', user.id)
-            .maybeSingle();
-          if (publicProf) {
-            prof = publicProf;
-          }
-        } catch (e) {
-          console.error('Could not fetch fallback public_profile:', e);
-        }
-      }
-
-      if (prof) {
-        setProfile(prof);
-      }
-
-      // Fetch user's boards for the sidebar
-      const { data: memberRows } = await supabase
-        .from('board_members')
-        .select('boards ( id, name, slug )')
-        .eq('user_id', user.id);
-
-      if (memberRows) {
-        const boardList: SidebarBoard[] = [];
-        memberRows.forEach((row: any) => {
-          if (row.boards) {
-            boardList.push({
-              id: row.boards.id,
-              name: row.boards.name,
-              slug: row.boards.slug,
-            });
-          }
-        });
-        setBoards(boardList);
-      }
-    } catch (err) {
-      console.error('Error loading workspace data:', err);
+  const refreshWorkspace = useCallback(async () => {
+    const data = await fetchWorkspaceDataWithCache(supabase, true);
+    if (data) {
+      setUser(data.user);
+      setProfile(data.profile);
+      setBoards(data.boards);
     }
   }, [supabase]);
 
   useEffect(() => {
-    fetchWorkspaceData();
-  }, [fetchWorkspaceData]);
+    let active = true;
+
+    // 1. Instantly apply cached workspace data on client mount (0ms)
+    const cached = getWorkspaceCache();
+    if (cached && active) {
+      setUser(cached.user);
+      setProfile(cached.profile);
+      setBoards(cached.boards);
+    }
+
+    // 2. Validate with cache helper (deduplicated, skips network if fresh < 2 mins)
+    fetchWorkspaceDataWithCache(supabase).then((data) => {
+      if (active && data) {
+        setUser(data.user);
+        setProfile(data.profile);
+        setBoards(data.boards);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
 
   const handleSignOut = async () => {
+    invalidateWorkspaceCache();
     await supabase.auth.signOut();
     router.push('/');
     router.refresh();
@@ -384,7 +355,7 @@ export default function WorkspaceLayout({
                 openSettings: () => router.push('/settings'),
                 openCreateBoard: () => setShowCreateModal(true),
                 openJoinBoard: () => setShowJoinModal(true),
-                refreshWorkspace: fetchWorkspaceData,
+                refreshWorkspace,
               }}
             >
               {children}
