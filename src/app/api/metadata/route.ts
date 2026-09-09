@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { extractMetadata } from '@/lib/metadata';
 import { rateLimit } from '@/lib/security/rate-limit';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export async function GET(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'anon';
@@ -14,12 +15,37 @@ export async function GET(req: NextRequest) {
   }
 
   const url = req.nextUrl.searchParams.get('url');
+  const linkId = req.nextUrl.searchParams.get('linkId');
   if (!url) {
     return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 });
   }
 
   try {
     const metadata = await extractMetadata(url);
+
+    // If linkId is provided, enrich database record with admin privileges
+    if (linkId) {
+      try {
+        const supabase = createAdminClient();
+        await supabase
+          .from('links')
+          .update({
+            platform: metadata.platform,
+            content_type: metadata.contentType,
+            title: metadata.title,
+            description: metadata.description,
+            thumbnail_url: metadata.thumbnailUrl,
+            embed_type: metadata.embedType,
+            external_id: metadata.externalId,
+            resolved_url: metadata.resolvedUrl,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', linkId);
+      } catch (dbErr) {
+        console.error(`Failed to update link ${linkId} in /api/metadata:`, dbErr);
+      }
+    }
+
     return NextResponse.json(metadata);
   } catch (error: any) {
     return NextResponse.json(
@@ -28,3 +54,4 @@ export async function GET(req: NextRequest) {
     );
   }
 }
+

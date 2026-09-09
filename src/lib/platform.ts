@@ -117,8 +117,8 @@ export function extractRedditPostInfo(rawUrl: string): { postId: string; permali
     }
 
     if (host.includes('reddit.com')) {
-      // /r/{sub}/comments/{id}/{slug}/
-      const match = parsed.pathname.match(/\/comments\/([a-zA-Z0-9]+)/i);
+      // /r/{sub}/comments/{id}/{slug}/ or /comments/{id} or /gallery/{id}
+      const match = parsed.pathname.match(/\/(?:comments|gallery)\/([a-zA-Z0-9]+)/i);
       if (match) {
         return {
           postId: match[1],

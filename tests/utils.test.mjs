@@ -85,7 +85,7 @@ function extractRedditPostInfo(rawUrl) {
       return id ? { postId: id } : null;
     }
     if (host.includes('reddit.com')) {
-      const match = parsed.pathname.match(/\/comments\/([a-zA-Z0-9]+)/i);
+      const match = parsed.pathname.match(/\/(?:comments|gallery)\/([a-zA-Z0-9]+)/i);
       if (match) return { postId: match[1] };
     }
   } catch {}
@@ -166,6 +166,9 @@ test('extractXStatusId extracts tweet ID and rejects pic.twitter.com', () => {
 test('extractRedditPostInfo extracts Reddit comment post ID', () => {
   const info = extractRedditPostInfo('https://www.reddit.com/r/indiameme/comments/1w62dnp/2029_me_modi_khatam_hai/');
   assert.strictEqual(info?.postId, '1w62dnp');
+
+  const galleryInfo = extractRedditPostInfo('https://www.reddit.com/gallery/902pzs');
+  assert.strictEqual(galleryInfo?.postId, '902pzs');
 });
 
 test('extractInstagramId extracts post and reel IDs', () => {

@@ -59,7 +59,16 @@ export default function AddLinkModal({
         targetUrl.includes('v.redd.it') ||
         Boolean(targetUrl.match(/\.(mp4|webm|mov|m3u8)(\?.*)?$/i)) ||
         Boolean(targetUrl.match(/\/(reel|reels|shorts|clip|clips)\//i));
-      const initialContentType: 'image' | 'video' | 'link' = isVideo ? 'video' : 'link';
+      const isImage =
+        Boolean(targetUrl.match(/\.(jpe?g|png|gif|webp|avif)(\?.*)?$/i)) ||
+        targetUrl.includes('i.redd.it') ||
+        targetUrl.includes('preview.redd.it') ||
+        targetUrl.includes('/gallery/');
+      const initialContentType: 'image' | 'video' | 'link' = isVideo
+        ? 'video'
+        : isImage
+        ? 'image'
+        : 'link';
 
       const supabase = createClient();
 
@@ -79,30 +88,9 @@ export default function AddLinkModal({
 
       if (insertErr) throw insertErr;
 
-      // Trigger background metadata enrichment
+      // Trigger background metadata enrichment on the server with admin privileges
       if (inserted?.id) {
-        fetch(`/api/metadata?url=${encodeURIComponent(targetUrl)}`)
-          .then((res) => res.json())
-          .then(async (meta) => {
-            if (meta) {
-              const updates: any = {
-                platform: meta.platform || platform.id,
-                content_type: meta.contentType || initialContentType,
-                updated_at: new Date().toISOString(),
-              };
-              if (!title.trim() && meta.title) updates.title = meta.title;
-              if (meta.description) updates.description = meta.description;
-              if (meta.thumbnailUrl) updates.thumbnail_url = meta.thumbnailUrl;
-              if (meta.embedType) updates.embed_type = meta.embedType;
-              if (meta.externalId) updates.external_id = meta.externalId;
-              if (meta.resolvedUrl) updates.resolved_url = meta.resolvedUrl;
-
-              await supabase
-                .from('links')
-                .update(updates)
-                .eq('id', inserted.id);
-            }
-          })
+        fetch(`/api/metadata?url=${encodeURIComponent(targetUrl)}&linkId=${inserted.id}`)
           .catch(() => {});
       }
 

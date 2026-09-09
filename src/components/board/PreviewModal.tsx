@@ -177,7 +177,7 @@ export default function PreviewModal({
         </div>
 
         {/* Media / Embed Area with unique post key for clean mount/unmount */}
-        <div className="w-full bg-surface-elevated/40 overflow-y-auto max-h-[50vh] flex items-center justify-center" key={link.id}>
+        <div className="w-full bg-black/40 dark:bg-black/60 overflow-hidden min-h-[280px] max-h-[60vh] flex items-center justify-center" key={link.id}>
           {(() => {
             const effectiveEmbedType =
               (link.embed_type as keyof typeof EmbedComponents) ||
@@ -186,9 +186,11 @@ export default function PreviewModal({
             const EmbedRenderer = EmbedComponents[effectiveEmbedType] ?? EmbedComponents.card;
             return (
               <EmbedRenderer
-                url={link.resolved_url}
+                url={link.resolved_url || link.url}
+                permalink={(link as any).resolved_url || undefined}
                 externalId={link.external_id || embedInfo.externalId}
                 thumbnail={link.thumbnail_url}
+                title={link.title}
                 link={link}
               />
             );

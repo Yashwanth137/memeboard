@@ -111,8 +111,10 @@ export async function ingestLink(input: IngestionInput): Promise<IngestionResult
   ) {
     initialContentType = 'video';
   } else if (
-    cleanUrl.match(/\.(jpg|jpeg|png|gif|webp|avif)(\?.*)?$/i) ||
-    cleanUrl.includes('i.redd.it')
+    cleanUrl.match(/\.(jpe?g|png|gif|webp|avif)(\?.*)?$/i) ||
+    cleanUrl.includes('i.redd.it') ||
+    cleanUrl.includes('preview.redd.it') ||
+    cleanUrl.includes('/gallery/')
   ) {
     initialContentType = 'image';
   }
@@ -155,13 +157,20 @@ export async function ingestLink(input: IngestionInput): Promise<IngestionResult
   (async () => {
     try {
       const meta = await extractMetadata(cleanUrl);
+      const determinedType =
+        meta.contentType === 'image' || meta.contentType === 'video'
+          ? meta.contentType
+          : meta.thumbnailUrl && initialContentType !== 'video'
+          ? 'image'
+          : initialContentType;
+
       await supabase
         .from('links')
         .update({
           title: input.customTitle || meta.title,
           description: meta.description,
           thumbnail_url: meta.thumbnailUrl,
-          content_type: meta.contentType || initialContentType,
+          content_type: determinedType,
           embed_type: meta.embedType,
           external_id: meta.externalId,
           resolved_url: meta.resolvedUrl,

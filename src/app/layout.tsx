@@ -10,6 +10,7 @@ export const metadata: Metadata = {
   title: 'Memeboarder',
   description:
     'Memeboarder is a social media platform for friend groups to collect and revisit memes, videos, and links shared across group chats.',
+  referrer: 'no-referrer',
   icons: {
     icon: '/icon.svg',
     shortcut: '/vercel.svg',

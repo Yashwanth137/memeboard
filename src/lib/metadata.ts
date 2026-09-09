@@ -95,13 +95,30 @@ export async function extractMetadata(rawUrl: string): Promise<ExtractedMetadata
     }
   }
 
-  // Follow redirects for Reddit /s/ shortlinks safely
-  if (targetUrl.includes('reddit.com') && targetUrl.includes('/s/')) {
+  // Follow redirects for Reddit /s/ and redd.it shortlinks safely
+  if (
+    (targetUrl.includes('reddit.com') || targetUrl.includes('redd.it')) &&
+    (targetUrl.includes('/s/') || Boolean(targetUrl.match(/redd\.it\/[a-zA-Z0-9]+/i)))
+  ) {
     const res = await safeFetch(targetUrl, { timeoutMs: 3500, maxRedirects: 2 });
-    if (res?.url && res.url.includes('/comments/')) {
+    if (res?.url && (res.url.includes('/comments/') || res.url.includes('/gallery/'))) {
       targetUrl = res.url;
       resolvedUrl = res.url;
     }
+  }
+
+  // Clean tracking query params from Reddit resolved URLs
+  if (resolvedUrl && (resolvedUrl.includes('reddit.com') || resolvedUrl.includes('redd.it'))) {
+    try {
+      const u = new URL(resolvedUrl);
+      u.searchParams.delete('share_id');
+      u.searchParams.delete('utm_source');
+      u.searchParams.delete('utm_medium');
+      u.searchParams.delete('utm_content');
+      u.searchParams.delete('utm_name');
+      u.searchParams.delete('utm_term');
+      resolvedUrl = u.toString();
+    } catch {}
   }
 
   if (targetUrl !== rawUrl) {
@@ -194,64 +211,97 @@ export async function extractMetadata(rawUrl: string): Promise<ExtractedMetadata
       } catch {}
     }
   } else if (platform.id === 'reddit') {
-    // Check if directly a v.redd.it video link
+    // Check if directly a v.redd.it video link or direct image link
     if (targetUrl.includes('v.redd.it')) {
       isDetectedVideo = true;
+    } else if (
+      targetUrl.includes('i.redd.it') ||
+      targetUrl.includes('preview.redd.it') ||
+      Boolean(targetUrl.match(/\.(jpe?g|png|gif|webp|avif)(\?.*)?$/i))
+    ) {
+      isDetectedImage = true;
+      oembedThumb = targetUrl;
+      if (!oembedTitle) oembedTitle = 'Reddit Image';
+      embedType = 'card';
     }
 
+    const redditPostInfo = extractRedditPostInfo(targetUrl);
+    const postId = externalId || redditPostInfo?.postId;
+
     // Primary: vxreddit proxy provides full unauthenticated OG metadata & video tags
-    try {
-      const vxUrl = targetUrl.replace(/^(https?:\/\/)?(www\.)?(reddit\.com|redd\.it)/i, 'https://vxreddit.com');
-      const vxRes = await safeFetch(vxUrl, {
-        headers: { 'User-Agent': 'TelegramBot (like TwitterBot)' },
-        timeoutMs: 3500,
-        maxBytes: 150000,
-      });
-
-      if (vxRes && vxRes.ok && vxRes.text) {
-        const vxHtml = vxRes.text;
-
-        // Check if post is a video (video.other, player, og:video, v.redd.it)
-        if (
-          vxHtml.includes('video.other') ||
-          vxHtml.includes('name="twitter:card" content="player"') ||
-          vxHtml.includes('og:video') ||
-          vxHtml.includes('twitter:player') ||
-          vxHtml.includes('v.redd.it')
-        ) {
-          isDetectedVideo = true;
-        }
-
-        const titleMatch = vxHtml.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i);
-        if (titleMatch?.[1]) {
-          oembedTitle = cleanHtmlString(titleMatch[1]);
-        }
-
-        const siteMatch = vxHtml.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
-        if (siteMatch?.[1]) {
-          oembedDesc = cleanHtmlString(siteMatch[1]);
-        }
-
-        const imgMatch = vxHtml.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
-        if (imgMatch?.[1]) {
-          oembedThumb = cleanHtmlString(imgMatch[1].replace(/&amp;/g, '&'));
-          if (!isDetectedVideo) isDetectedImage = true;
-        }
-      }
-    } catch {}
-
-    // Fallback: Reddit native oEmbed if vxreddit didn't resolve title
-    if (!oembedTitle) {
+    if (!oembedThumb) {
       try {
+        const vxUrl = postId
+          ? `https://vxreddit.com/comments/${postId}`
+          : targetUrl.replace(/^(https?:\/\/)?(www\.)?(reddit\.com|redd\.it)/i, 'https://vxreddit.com');
+
+        const vxRes = await safeFetch(vxUrl, {
+          headers: { 'User-Agent': 'TelegramBot (like TwitterBot)' },
+          timeoutMs: 4000,
+          maxBytes: 200000,
+        });
+
+        if (vxRes && vxRes.ok && vxRes.text) {
+          const vxHtml = vxRes.text;
+
+          // Check if post is a video (video.other, player, og:video, v.redd.it)
+          if (
+            vxHtml.includes('video.other') ||
+            vxHtml.includes('name="twitter:card" content="player"') ||
+            vxHtml.includes('og:video') ||
+            vxHtml.includes('twitter:player') ||
+            vxHtml.includes('v.redd.it')
+          ) {
+            isDetectedVideo = true;
+          }
+
+          const titleMatch =
+            vxHtml.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i) ||
+            vxHtml.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i);
+          if (titleMatch?.[1] && titleMatch[1].trim() !== 'vxReddit') {
+            oembedTitle = cleanHtmlString(titleMatch[1]);
+          }
+
+          const siteMatch =
+            vxHtml.match(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i) ||
+            vxHtml.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i);
+          if (siteMatch?.[1]) {
+            oembedDesc = cleanHtmlString(siteMatch[1]);
+          }
+
+          const imgMatch =
+            vxHtml.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ||
+            vxHtml.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) ||
+            vxHtml.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i) ||
+            vxHtml.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i) ||
+            vxHtml.match(/<meta[^>]+property=["']og:image:url["'][^>]+content=["']([^"']+)["']/i) ||
+            vxHtml.match(/<meta[^>]+name=["']twitter:image:src["'][^>]+content=["']([^"']+)["']/i) ||
+            vxHtml.match(/<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/i);
+
+          if (imgMatch?.[1]) {
+            const rawImg = cleanHtmlString(imgMatch[1].replace(/&amp;/g, '&'));
+            if (rawImg && !rawImg.includes('redditstatic.com') && !rawImg.includes('favicon')) {
+              oembedThumb = rawImg;
+              if (!isDetectedVideo) isDetectedImage = true;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    // Fallback: Reddit native oEmbed if vxreddit didn't resolve title or if title is generic proxy title
+    if (!oembedTitle || oembedTitle === 'vxReddit') {
+      try {
+        const canonicalUrl = postId ? `https://www.reddit.com/comments/${postId}` : targetUrl;
         const r = await fetch(
-          `https://www.reddit.com/oembed?url=${encodeURIComponent(targetUrl)}`,
+          `https://www.reddit.com/oembed?url=${encodeURIComponent(canonicalUrl)}`,
           { signal: AbortSignal.timeout(3500) },
         );
         if (r.ok) {
           const d = await r.json();
-          oembedTitle = cleanHtmlString(d.title);
+          if (d.title) oembedTitle = cleanHtmlString(d.title);
           const a = cleanHtmlString(d.author_name);
-          oembedDesc = a ? `By u/${a}` : null;
+          if (a) oembedDesc = `By u/${a}`;
         }
       } catch {}
     }
