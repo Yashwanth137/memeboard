@@ -93,6 +93,9 @@ export default function AddLinkModal({
               if (!title.trim() && meta.title) updates.title = meta.title;
               if (meta.description) updates.description = meta.description;
               if (meta.thumbnailUrl) updates.thumbnail_url = meta.thumbnailUrl;
+              if (meta.embedType) updates.embed_type = meta.embedType;
+              if (meta.externalId) updates.external_id = meta.externalId;
+              if (meta.resolvedUrl) updates.resolved_url = meta.resolvedUrl;
 
               await supabase
                 .from('links')

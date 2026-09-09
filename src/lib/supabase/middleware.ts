@@ -35,7 +35,20 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Refresh auth session token if expired and write updated cookies back to response
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Auto-redirect authenticated users from root landing page ('/') to dashboard ('/boards')
+  if (user && request.nextUrl.pathname === '/') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/boards';
+    const redirectResponse = NextResponse.redirect(url);
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+    });
+    return redirectResponse;
+  }
 
   return supabaseResponse;
 }

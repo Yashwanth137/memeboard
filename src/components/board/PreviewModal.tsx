@@ -6,7 +6,25 @@ import { detectPlatform, resolveEmbedInfo } from '@/lib/platform';
 import { formatTimeAgo } from '@/lib/utils';
 import { X, ExternalLink, Copy, ChevronLeft, ChevronRight } from 'lucide-react';
 import YouTubeEmbed from './embeds/YouTubeEmbed';
+import RedditEmbed from './embeds/RedditEmbed';
+import InstagramEmbed from './embeds/InstagramEmbed';
+import NativeVideoPlayer from './embeds/NativeVideoPlayer';
 import RichPreview from './embeds/RichPreview';
+
+interface EmbedComponentProps {
+  url?: string | null;
+  externalId?: string | null;
+  thumbnail?: string | null;
+  link: LinkWithDetails;
+}
+
+const EmbedComponents = {
+  youtube: YouTubeEmbed,
+  reddit: RedditEmbed,
+  instagram: InstagramEmbed,
+  x: NativeVideoPlayer,
+  card: RichPreview,
+} as const;
 
 interface PreviewModalProps {
   link: LinkWithDetails | null;
@@ -160,11 +178,21 @@ export default function PreviewModal({
 
         {/* Media / Embed Area with unique post key for clean mount/unmount */}
         <div className="w-full bg-surface-elevated/40 overflow-y-auto max-h-[50vh] flex items-center justify-center" key={link.id}>
-          {embedInfo.embedType === 'youtube' ? (
-            <YouTubeEmbed url={targetUrl} title={link.title} link={link} />
-          ) : (
-            <RichPreview link={link} />
-          )}
+          {(() => {
+            const effectiveEmbedType =
+              (link.embed_type as keyof typeof EmbedComponents) ||
+              (embedInfo.embedType as keyof typeof EmbedComponents) ||
+              'card';
+            const EmbedRenderer = EmbedComponents[effectiveEmbedType] ?? EmbedComponents.card;
+            return (
+              <EmbedRenderer
+                url={link.resolved_url}
+                externalId={link.external_id || embedInfo.externalId}
+                thumbnail={link.thumbnail_url}
+                link={link}
+              />
+            );
+          })()}
         </div>
 
         {/* Details Area */}

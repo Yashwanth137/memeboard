@@ -289,7 +289,7 @@ export default function BoardPage() {
         // B. Data Query
         let query = supabase
           .from('links')
-          .select('id, board_id, submitted_by, url, platform, content_type, title, description, thumbnail_url, category_id, created_at, updated_at')
+          .select('id, board_id, submitted_by, url, platform, content_type, title, description, thumbnail_url, category_id, embed_type, external_id, resolved_url, created_at, updated_at')
           .eq('board_id', board.id);
 
         if (mediaType) {
@@ -363,9 +363,9 @@ export default function BoardPage() {
               ...l,
               platform: actualPlatform,
               title: fallbackTitle,
-              embed_type: embedInfo.embedType,
-              external_id: embedInfo.externalId,
-              resolved_url: embedInfo.permalink || null,
+              embed_type: (l as any).embed_type || embedInfo.embedType,
+              external_id: (l as any).external_id || embedInfo.externalId,
+              resolved_url: (l as any).resolved_url || embedInfo.permalink || null,
               profile: l.submitted_by ? profilesMap.get(l.submitted_by) || null : null,
               category: categories.find((c) => c.id === l.category_id) || null,
             };

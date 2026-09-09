@@ -4,35 +4,51 @@ import React, { useState } from 'react';
 import { LinkWithDetails } from '@/types/database';
 
 interface RichPreviewProps {
-  link: LinkWithDetails;
+  link?: LinkWithDetails | null;
+  thumbnailUrl?: string | null;
+  thumbnail?: string | null;
+  title?: string | null;
+  url?: string | null;
+  externalId?: string | null;
 }
 
-export default function RichPreview({ link }: RichPreviewProps) {
+export default function RichPreview({ link, thumbnailUrl, thumbnail, title, url }: RichPreviewProps) {
   const [imgError, setImgError] = useState(false);
 
-  if (!link.thumbnail_url || imgError) {
+  const finalThumb = thumbnail || thumbnailUrl || link?.thumbnail_url;
+  const finalTitle = title || link?.title || 'Preview';
+  const finalUrl = url || link?.url;
+
+  if (!finalThumb || imgError) {
     return (
-      <div className="v2-rich-preview-card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4rem 0', background: 'var(--color-surface)', borderBottom: '1px solid var(--color-border)' }}>
-        <div style={{ textAlign: 'center', color: 'var(--color-text-secondary)' }}>
-          <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🔗</div>
-          <p>No preview available</p>
-          <a href={link.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', marginTop: '0.5rem', display: 'inline-block' }}>Visit link</a>
+      <div className="w-full flex items-center justify-center py-16 px-4 bg-surface border-b border-border-subtle">
+        <div className="text-center text-text-secondary">
+          <div className="text-3xl mb-3">🔗</div>
+          <p className="text-xs font-medium">No preview available</p>
+          {finalUrl && (
+            <a
+              href={finalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary text-xs font-bold mt-2 inline-block hover:underline"
+            >
+              Visit link
+            </a>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="v2-rich-preview-card" style={{ padding: 0, background: '#000' }}>
-      <div className="v2-rich-preview-image-wrapper" style={{ display: 'flex', justifyContent: 'center', maxHeight: '60vh' }}>
-        <img
-          src={link.thumbnail_url}
-          alt={link.title || 'Preview'}
-          style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain' }}
-          loading="lazy"
-          onError={() => setImgError(true)}
-        />
-      </div>
+    <div className="w-full bg-black/90 flex items-center justify-center max-h-[60vh] p-1">
+      <img
+        src={finalThumb}
+        alt={finalTitle}
+        className="max-w-full max-h-[50vh] object-contain rounded-lg"
+        loading="lazy"
+        onError={() => setImgError(true)}
+      />
     </div>
   );
 }

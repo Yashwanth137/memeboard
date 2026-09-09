@@ -162,6 +162,9 @@ export async function extractMetadata(rawUrl: string): Promise<ExtractedMetadata
           if (tweet.media?.videos && tweet.media.videos.length > 0) {
             isDetectedVideo = true;
             oembedThumb = tweet.media.videos[0].thumbnail_url || tweet.media.videos[0].url;
+            if (tweet.media.videos[0].url) {
+              resolvedUrl = tweet.media.videos[0].url;
+            }
           } else if (tweet.media?.photos && tweet.media.photos.length > 0) {
             isDetectedImage = true;
             oembedThumb = tweet.media.photos[0].url;
@@ -373,6 +376,9 @@ export async function enrichLinkMetadata(linkId: string, url: string): Promise<v
         title: meta.title,
         description: meta.description,
         thumbnail_url: meta.thumbnailUrl,
+        embed_type: meta.embedType,
+        external_id: meta.externalId,
+        resolved_url: meta.resolvedUrl,
         updated_at: new Date().toISOString(),
       })
       .eq('id', linkId);

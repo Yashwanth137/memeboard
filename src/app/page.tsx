@@ -19,9 +19,14 @@ export default function HomePage() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
+      if (user) {
+        setUser(user);
+        router.replace('/boards');
+      } else {
+        setUser(null);
+      }
     });
-  }, [supabase]);
+  }, [supabase, router]);
 
   const handleEnterBoard = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -50,6 +55,10 @@ export default function HomePage() {
       router.push(`/b/${slug}`);
     }, 1200);
   };
+
+  if (user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-page text-text-primary bg-noise relative overflow-hidden">
